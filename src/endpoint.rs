@@ -1,10 +1,10 @@
 use core::mem;
 use cortex_m::interrupt::{self, Mutex, CriticalSection};
-use usb_device::{Result, UsbError};
-use usb_device::endpoint::EndpointType;
+use usb_device::{Result, UsbError, UsbDirection};
+use usb_device::endpoint::{EndpointType, EndpointAddress};
 use crate::target::{UsbRegisters, usb, UsbAccessType};
 use crate::endpoint_memory::{EndpointBuffer, BufferDescriptor, EndpointMemoryAllocator};
-
+use crate::endpoint_map::EndpointMap;
 
 /// Arbitrates access to the endpoint-specific registers and packet buffer memory.
 #[derive(Default)]
@@ -12,7 +12,7 @@ pub struct Endpoint {
     out_buf: Option<Mutex<EndpointBuffer>>,
     in_buf: Option<Mutex<EndpointBuffer>>,
     ep_type: Option<EndpointType>,
-    index: u8,
+    index: EndpointIndex,
 }
 
 pub fn calculate_count_rx(mut size: usize) -> Result<(usize, u16)> {
@@ -36,7 +36,7 @@ pub fn calculate_count_rx(mut size: usize) -> Result<(usize, u16)> {
 }
 
 impl Endpoint {
-    pub fn new(index: u8) -> Endpoint {
+    pub fn new(index: EndpointIndex) -> Endpoint {
         Endpoint {
             out_buf: None,
             in_buf: None,
@@ -58,11 +58,11 @@ impl Endpoint {
     }
 
     pub fn set_out_buf(&mut self, buffer: EndpointBuffer, size_bits: u16) {
-        let offset = buffer.offset();
+        //let offset = buffer.offset();
         self.out_buf = Some(Mutex::new(buffer));
 
         let descr = self.descr();
-        descr.addr_rx.set(offset as UsbAccessType);
+        //descr.addr_rx.set(offset as UsbAccessType);
         descr.count_rx.set(size_bits as UsbAccessType);
     }
 
@@ -71,20 +71,22 @@ impl Endpoint {
     }
 
     pub fn set_in_buf(&mut self, buffer: EndpointBuffer) {
-        let offset = buffer.offset();
+        //let offset = buffer.offset();
         self.in_buf = Some(Mutex::new(buffer));
 
         let descr = self.descr();
-        descr.addr_tx.set(offset as UsbAccessType);
+        //descr.addr_tx.set(offset as UsbAccessType);
         descr.count_tx.set(0);
     }
 
     fn descr(&self) -> &'static BufferDescriptor {
-        EndpointMemoryAllocator::buffer_descriptor(self.index)
+        //EndpointMemoryAllocator::buffer_descriptor(self.index)
+        unimplemented!()
     }
 
     fn reg(&self) -> &'static usb::EPR {
-        UsbRegisters::ep_register(self.index)
+        //UsbRegisters::ep_register(self.index)
+        unimplemented!()
     }
 
     pub fn configure(&self, cs: &CriticalSection) {
@@ -103,7 +105,7 @@ impl Endpoint {
                 .ctr_tx().clear_bit()
                 // dtog_rx
                 // stat_tx
-                .ea().bits(self.index)
+                .ea().bits(self.index.0)
         });
 
         self.set_stat_rx(cs,
@@ -239,5 +241,43 @@ impl From<u8> for EndpointStatus {
         } else {
             EndpointStatus::Disabled
         }
+    }
+}
+
+// Allowed values: 0..7
+#[derive(Default)]
+pub struct EndpointIndex(u8);
+
+impl EndpointIndex {
+    pub fn new(index: u8) -> EndpointIndex {
+        unimplemented!()
+    }
+
+    pub fn direction(&self) -> UsbDirection {
+        if (self.0 & 1) > 0 {
+            UsbDirection::In
+        } else {
+            UsbDirection::Out
+        }
+    }
+}
+
+pub struct DeviceEndpoints {
+    in_ep: [Endpoint; 4],
+    out_ep: [Endpoint; 4],
+    map: EndpointMap,
+}
+
+impl DeviceEndpoints {
+    pub fn new() -> Self {
+        unimplemented!()
+    }
+
+    pub fn write_packet(&self, ep_addr: EndpointAddress, buf: &[u8]) -> Result<()> {
+        unimplemented!()
+    }
+
+    fn read_packet(&self, ep_addr: EndpointAddress, buf: &mut [u8]) -> Result<usize> {
+        unimplemented!()
     }
 }

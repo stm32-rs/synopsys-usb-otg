@@ -6,7 +6,6 @@
 #![no_std]
 
 mod endpoint;
-mod endpoint_map;
 mod endpoint_memory;
 
 mod target;

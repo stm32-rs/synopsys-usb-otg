@@ -7,7 +7,7 @@ use cortex_m::interrupt::{self, Mutex};
 use stm32ral::{read_reg, write_reg, modify_reg, otg_fs_global, otg_fs_device};
 
 use crate::target::{USB, apb_usb_enable, delay, NUM_ENDPOINTS, UsbRegisters, UsbPins};
-use crate::endpoint::{Endpoint, EndpointStatus, calculate_count_rx, EndpointIndex, DeviceEndpoints};
+use crate::endpoint::{Endpoint, EndpointStatus, DeviceEndpoints};
 use crate::endpoint_memory::EndpointMemoryAllocator;
 
 

@@ -2,46 +2,71 @@ use core::mem;
 use cortex_m::interrupt::{self, Mutex, CriticalSection};
 use usb_device::{Result, UsbError, UsbDirection};
 use usb_device::endpoint::{EndpointType, EndpointAddress};
-use crate::target::{UsbRegisters, usb, UsbAccessType};
-use crate::endpoint_memory::{EndpointBuffer, BufferDescriptor, EndpointMemoryAllocator};
+use crate::endpoint_memory::{EndpointBuffer, EndpointMemoryAllocator};
 use usb_device::bus::PollResult;
+use crate::ral::{endpoint_in, endpoint_out};
+use stm32ral::{read_reg, modify_reg};
 
-/// Arbitrates access to the endpoint-specific registers and packet buffer memory.
-pub struct Endpoint {
-    out_buf: Option<Mutex<EndpointBuffer>>,
-    in_buf: Option<Mutex<EndpointBuffer>>,
-    ep_type: Option<EndpointType>,
+struct UnusedEndpoint {
     address: EndpointAddress,
 }
 
-pub fn calculate_count_rx(mut size: usize) -> Result<(usize, u16)> {
-    if size <= 62 {
-        // Buffer size is in units of 2 bytes, 0 = 0 bytes
-        size = (size + 1) & !0x01;
+struct EndpointIn {
+    address: EndpointAddress,
+    ep_type: EndpointType,
+}
 
-        let size_bits = size >> 1;
+struct EndpointOut {
+    address: EndpointAddress,
+    ep_type: EndpointType,
+    buffer: Mutex<EndpointBuffer>,
+}
 
-        Ok((size, (size_bits << 10) as u16))
-    } else if size <= 1024 {
-        // Buffer size is in units of 32 bytes, 0 = 32 bytes
-        size = (size + 31) & !0x1f;
-
-        let size_bits = (size >> 5) - 1;
-
-        Ok((size, (0x8000 | (size_bits << 10)) as u16))
-    } else {
-        Err(UsbError::EndpointMemoryOverflow)
-    }
+/// Arbitrates access to the endpoint-specific registers and packet buffer memory.
+pub struct Endpoint {
+    buffer: Option<Mutex<EndpointBuffer>>,
+    ep_type: Option<EndpointType>,
+    address: EndpointAddress,
 }
 
 impl Endpoint {
     pub fn new(address: EndpointAddress) -> Endpoint {
         Endpoint {
-            out_buf: None,
-            in_buf: None,
+            buffer: None,
             ep_type: None,
             address,
         }
+    }
+
+    pub fn is_initialized(&self) -> bool {
+        self.ep_type.is_some()
+    }
+
+    pub fn set_stalled(&self, stalled: bool) {
+        interrupt::free(|cs| {
+            if self.is_stalled() == stalled {
+                return
+            }
+
+            if self.address.is_in() {
+                let ep = endpoint_in::instance(self.address.index());
+                modify_reg!(endpoint_in, ep, DIEPCTL, Stall: stalled as u32);
+            } else {
+                let ep = endpoint_out::instance(self.address.index());
+                modify_reg!(endpoint_out, ep, DOEPCTL, Stall: stalled as u32);
+            }
+        })
+    }
+
+    pub fn is_stalled(&self) -> bool {
+        let stall = if self.address.is_in() {
+            let ep = endpoint_in::instance(self.address.index());
+            read_reg!(endpoint_in, ep, DIEPCTL, Stall)
+        } else {
+            let ep = endpoint_out::instance(self.address.index());
+            read_reg!(endpoint_out, ep, DOEPCTL, Stall)
+        };
+        stall != 0
     }
 
     pub fn ep_type(&self) -> Option<EndpointType> {
@@ -52,44 +77,8 @@ impl Endpoint {
         self.ep_type = Some(ep_type);
     }
 
-    pub fn is_out_buf_set(&self) -> bool {
-        self.out_buf.is_some()
-    }
-
-    pub fn set_out_buf(&mut self, buffer: EndpointBuffer, size_bits: u16) {
-        //let offset = buffer.offset();
-        self.out_buf = Some(Mutex::new(buffer));
-
-        let descr = self.descr();
-        //descr.addr_rx.set(offset as UsbAccessType);
-        descr.count_rx.set(size_bits as UsbAccessType);
-    }
-
-    pub fn is_in_buf_set(&self) -> bool {
-        self.in_buf.is_some()
-    }
-
-    pub fn set_in_buf(&mut self, buffer: EndpointBuffer) {
-        //let offset = buffer.offset();
-        self.in_buf = Some(Mutex::new(buffer));
-
-        let descr = self.descr();
-        //descr.addr_tx.set(offset as UsbAccessType);
-        descr.count_tx.set(0);
-    }
-
-    fn descr(&self) -> &'static BufferDescriptor {
-        //EndpointMemoryAllocator::buffer_descriptor(self.index)
-        unimplemented!()
-    }
-
-    fn reg(&self) -> &'static usb::EPR {
-        //UsbRegisters::ep_register(self.index)
-        unimplemented!()
-    }
-
     pub fn configure(&self, cs: &CriticalSection) {
-        let ep_type = match self.ep_type {
+        /*let ep_type = match self.ep_type {
             Some(t) => t,
             None => { return },
         };
@@ -112,102 +101,60 @@ impl Endpoint {
 
         self.set_stat_tx(cs,
             if self.in_buf.is_some() { EndpointStatus::Nak }
-            else { EndpointStatus::Disabled} );
+            else { EndpointStatus::Disabled} );*/
     }
 
     pub fn write(&self, buf: &[u8]) -> Result<()> {
-        interrupt::free(|cs| {
-            let in_buf = self.in_buf.as_ref().unwrap().borrow(cs);
-
-            if buf.len() > in_buf.capacity() {
-                return Err(UsbError::BufferOverflow);
-            }
-
-            let reg = self.reg();
-
-            match reg.read().stat_tx().bits().into() {
-                EndpointStatus::Valid | EndpointStatus::Disabled => return Err(UsbError::WouldBlock),
-                _ => {},
-            };
-
-            in_buf.write(buf);
-            self.descr().count_tx.set(buf.len() as u16 as UsbAccessType);
-
-            self.set_stat_tx(cs, EndpointStatus::Valid);
-
-            Ok(())
-        })
+        unimplemented!()
+//        interrupt::free(|cs| {
+//            let in_buf = self.in_buf.as_ref().unwrap().borrow(cs);
+//
+//            if buf.len() > in_buf.capacity() {
+//                return Err(UsbError::BufferOverflow);
+//            }
+//
+//            let reg = self.reg();
+//
+//            match reg.read().stat_tx().bits().into() {
+//                EndpointStatus::Valid | EndpointStatus::Disabled => return Err(UsbError::WouldBlock),
+//                _ => {},
+//            };
+//
+//            in_buf.write(buf);
+//            self.descr().count_tx.set(buf.len() as u16 as UsbAccessType);
+//
+//            self.set_stat_tx(cs, EndpointStatus::Valid);
+//
+//            Ok(())
+//        })
     }
 
     pub fn read(&self, buf: &mut [u8]) -> Result<usize> {
-        interrupt::free(|cs| {
-            let out_buf = self.out_buf.as_ref().unwrap().borrow(cs);
-
-            let reg_v = self.reg().read();
-
-            let status: EndpointStatus = reg_v.stat_rx().bits().into();
-
-            if status == EndpointStatus::Disabled || !reg_v.ctr_rx().bit_is_set() {
-                return Err(UsbError::WouldBlock);
-            }
-
-            self.clear_ctr_rx(cs);
-
-            let count = (self.descr().count_rx.get() & 0x3ff) as usize;
-            if count > buf.len() {
-                return Err(UsbError::BufferOverflow);
-            }
-
-            out_buf.read(&mut buf[0..count]);
-
-            self.set_stat_rx(cs, EndpointStatus::Valid);
-
-            Ok(count)
-        })
-    }
-
-    pub fn read_reg(&self) -> usb::epr::R {
-        self.reg().read()
-    }
-
-    /// The endpoint register fields may be modified by hardware as well as software. To avoid race
-    /// conditions, there are invariant values for the fields that may be modified by the hardware
-    /// that can be written to avoid modifying other fields while modifying a single field. This
-    /// method sets all the volatile fields to their invariant values.
-    fn set_invariant_values(w: &mut usb::epr::W) -> &mut usb::epr::W {
-        w
-            .ctr_rx().set_bit()
-            .dtog_rx().clear_bit()
-            .stat_rx().bits(0)
-            .ctr_tx().set_bit()
-            .dtog_tx().clear_bit()
-            .stat_tx().bits(0)
-    }
-
-    pub fn clear_ctr_rx(&self, _cs: &CriticalSection) {
-        self.reg().modify(|_, w|
-            Self::set_invariant_values(w)
-                .ctr_rx().clear_bit());
-    }
-
-    pub fn clear_ctr_tx(&self, _cs: &CriticalSection) {
-        self.reg().modify(|_, w|
-            Self::set_invariant_values(w)
-                .ctr_tx().clear_bit());
-    }
-
-    pub fn set_stat_rx(&self, _cs: &CriticalSection, status: EndpointStatus) {
-        self.reg().modify(|r, w| {
-            Self::set_invariant_values(w)
-                .stat_rx().bits(r.stat_rx().bits() ^ (status as u8))
-        });
-    }
-
-    pub fn set_stat_tx(&self, _cs: &CriticalSection, status: EndpointStatus) {
-        self.reg().modify(|r, w| {
-            Self::set_invariant_values(w)
-                .stat_tx().bits(r.stat_tx().bits() ^ (status as u8))
-        });
+        unimplemented!()
+//        interrupt::free(|cs| {
+//            let out_buf = self.out_buf.as_ref().unwrap().borrow(cs);
+//
+//            let reg_v = self.reg().read();
+//
+//            let status: EndpointStatus = reg_v.stat_rx().bits().into();
+//
+//            if status == EndpointStatus::Disabled || !reg_v.ctr_rx().bit_is_set() {
+//                return Err(UsbError::WouldBlock);
+//            }
+//
+//            self.clear_ctr_rx(cs);
+//
+//            let count = (self.descr().count_rx.get() & 0x3ff) as usize;
+//            if count > buf.len() {
+//                return Err(UsbError::BufferOverflow);
+//            }
+//
+//            out_buf.read(&mut buf[0..count]);
+//
+//            self.set_stat_rx(cs, EndpointStatus::Valid);
+//
+//            Ok(count)
+//        })
     }
 }
 
@@ -242,23 +189,6 @@ impl From<u8> for EndpointStatus {
     }
 }
 
-// Allowed values: 0..7
-#[derive(Default)]
-pub struct EndpointIndex(u8);
-
-impl EndpointIndex {
-    pub fn new(index: u8) -> EndpointIndex {
-        unimplemented!()
-    }
-
-    pub fn direction(&self) -> UsbDirection {
-        if (self.0 & 1) > 0 {
-            UsbDirection::In
-        } else {
-            UsbDirection::Out
-        }
-    }
-}
 
 pub struct DeviceEndpoints {
     out_ep: [Endpoint; 4],
@@ -293,7 +223,7 @@ impl DeviceEndpoints {
         if let Some(address) = ep_addr {
             for ep in endpoints {
                 if ep.address == address {
-                    if ep.ep_type.is_none() {
+                    if !ep.is_initialized() {
                         return Ok(ep);
                     } else {
                         return Err(UsbError::InvalidEndpoint);
@@ -303,7 +233,7 @@ impl DeviceEndpoints {
             Err(UsbError::InvalidEndpoint)
         } else {
             for ep in &mut endpoints[1..] {
-                if ep.ep_type.is_none() {
+                if !ep.is_initialized() {
                     return Ok(ep)
                 }
             }
@@ -379,33 +309,10 @@ impl DeviceEndpoints {
     }
 
     pub fn set_stalled(&self, ep_addr: EndpointAddress, stalled: bool) {
-        unimplemented!()
-        /*interrupt::free(|cs| {
-            if self.is_stalled(ep_addr) == stalled {
-                return
-            }
-
-            let ep = &self.endpoints[ep_addr.index()];
-
-            match (stalled, ep_addr.direction()) {
-                (true, UsbDirection::In) => ep.set_stat_tx(cs, EndpointStatus::Stall),
-                (true, UsbDirection::Out) => ep.set_stat_rx(cs, EndpointStatus::Stall),
-                (false, UsbDirection::In) => ep.set_stat_tx(cs, EndpointStatus::Nak),
-                (false, UsbDirection::Out) => ep.set_stat_rx(cs, EndpointStatus::Valid),
-            };
-        });*/
+        self.out_ep[ep_addr.index()].set_stalled(stalled)
     }
 
     pub fn is_stalled(&self, ep_addr: EndpointAddress) -> bool {
-        unimplemented!()
-        /*let ep = &self.endpoints[ep_addr.index()];
-        let reg_v = ep.read_reg();
-
-        let status = match ep_addr.direction() {
-            UsbDirection::In => reg_v.stat_tx().bits(),
-            UsbDirection::Out => reg_v.stat_rx().bits(),
-        };
-
-        status == (EndpointStatus::Stall as u8)*/
+        self.out_ep[ep_addr.index()].is_stalled()
     }
 }

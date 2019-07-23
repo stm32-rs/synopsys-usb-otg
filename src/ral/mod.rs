@@ -1,25 +1,5 @@
 #![allow(non_snake_case)]
 
-use stm32ral::RWRegister;
-
-// $periph: endpoint_in | endpoint_out
-
-/// Common parts
-pub mod endpoint {
-    use stm32ral::RWRegister;
-
-    pub use stm32ral::stm32f4::peripherals::otg_fs_device_v2::DIEPTSIZ1 as EPTSIZ;
-
-    struct RegisterBlock {
-        pub EPCTL: RWRegister<u32>,
-        _reserved0: u32,
-        pub EPINT: RWRegister<u32>,
-        _reserved1: u32,
-        pub EPTSIZ: RWRegister<u32>,
-        _reserved2: [u32; 3],
-    }
-}
-
 pub mod endpoint_in {
     use stm32ral::RWRegister;
     use core::marker::PhantomData;

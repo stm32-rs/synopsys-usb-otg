@@ -4,15 +4,14 @@ use usb_device::{Result, UsbError, UsbDirection};
 use usb_device::endpoint::{EndpointType, EndpointAddress};
 use crate::target::{UsbRegisters, usb, UsbAccessType};
 use crate::endpoint_memory::{EndpointBuffer, BufferDescriptor, EndpointMemoryAllocator};
-use crate::endpoint_map::EndpointMap;
+use usb_device::bus::PollResult;
 
 /// Arbitrates access to the endpoint-specific registers and packet buffer memory.
-#[derive(Default)]
 pub struct Endpoint {
     out_buf: Option<Mutex<EndpointBuffer>>,
     in_buf: Option<Mutex<EndpointBuffer>>,
     ep_type: Option<EndpointType>,
-    index: EndpointIndex,
+    address: EndpointAddress,
 }
 
 pub fn calculate_count_rx(mut size: usize) -> Result<(usize, u16)> {
@@ -36,12 +35,12 @@ pub fn calculate_count_rx(mut size: usize) -> Result<(usize, u16)> {
 }
 
 impl Endpoint {
-    pub fn new(index: EndpointIndex) -> Endpoint {
+    pub fn new(address: EndpointAddress) -> Endpoint {
         Endpoint {
             out_buf: None,
             in_buf: None,
             ep_type: None,
-            index,
+            address,
         }
     }
 
@@ -105,7 +104,6 @@ impl Endpoint {
                 .ctr_tx().clear_bit()
                 // dtog_rx
                 // stat_tx
-                .ea().bits(self.index.0)
         });
 
         self.set_stat_rx(cs,
@@ -117,7 +115,7 @@ impl Endpoint {
             else { EndpointStatus::Disabled} );
     }
 
-    pub fn write(&self, buf: &[u8]) -> Result<usize> {
+    pub fn write(&self, buf: &[u8]) -> Result<()> {
         interrupt::free(|cs| {
             let in_buf = self.in_buf.as_ref().unwrap().borrow(cs);
 
@@ -137,7 +135,7 @@ impl Endpoint {
 
             self.set_stat_tx(cs, EndpointStatus::Valid);
 
-            Ok(buf.len())
+            Ok(())
         })
     }
 
@@ -263,21 +261,151 @@ impl EndpointIndex {
 }
 
 pub struct DeviceEndpoints {
-    in_ep: [Endpoint; 4],
     out_ep: [Endpoint; 4],
-    map: EndpointMap,
+    in_ep: [Endpoint; 4],
 }
 
 impl DeviceEndpoints {
     pub fn new() -> Self {
-        unimplemented!()
+        let out_ep = [
+            Endpoint::new(EndpointAddress::from_parts(0, UsbDirection::Out)),
+            Endpoint::new(EndpointAddress::from_parts(1, UsbDirection::Out)),
+            Endpoint::new(EndpointAddress::from_parts(2, UsbDirection::Out)),
+            Endpoint::new(EndpointAddress::from_parts(3, UsbDirection::Out)),
+        ];
+        let in_ep = [
+            Endpoint::new(EndpointAddress::from_parts(0, UsbDirection::In)),
+            Endpoint::new(EndpointAddress::from_parts(1, UsbDirection::In)),
+            Endpoint::new(EndpointAddress::from_parts(2, UsbDirection::In)),
+            Endpoint::new(EndpointAddress::from_parts(3, UsbDirection::In)),
+        ];
+        Self {
+            out_ep,
+            in_ep,
+        }
+    }
+
+    fn find_free(
+        endpoints: &mut [Endpoint],
+        ep_addr: Option<EndpointAddress>
+    ) -> Result<&mut Endpoint>
+    {
+        if let Some(address) = ep_addr {
+            for ep in endpoints {
+                if ep.address == address {
+                    if ep.ep_type.is_none() {
+                        return Ok(ep);
+                    } else {
+                        return Err(UsbError::InvalidEndpoint);
+                    }
+                }
+            }
+            Err(UsbError::InvalidEndpoint)
+        } else {
+            for ep in &mut endpoints[1..] {
+                if ep.ep_type.is_none() {
+                    return Ok(ep)
+                }
+            }
+            Err(UsbError::EndpointOverflow)
+        }
+    }
+
+    pub fn alloc_ep(
+        &mut self,
+        ep_dir: UsbDirection,
+        ep_addr: Option<EndpointAddress>,
+        ep_type: EndpointType,
+        max_packet_size: u16,
+        _interval: u8) -> Result<EndpointAddress>
+    {
+        if ep_dir == UsbDirection::Out {
+            let ep = Self::find_free(&mut self.out_ep, ep_addr)?;
+            ep.ep_type = Some(ep_type);
+
+            // TODO: allocate buffers
+
+            Ok(ep.address)
+        } else {
+            let ep = Self::find_free(&mut self.out_ep, ep_addr)?;
+            ep.ep_type = Some(ep_type);
+
+            // TODO: allocate buffers
+
+            Ok(ep.address)
+        }
     }
 
     pub fn write_packet(&self, ep_addr: EndpointAddress, buf: &[u8]) -> Result<()> {
-        unimplemented!()
+        if !ep_addr.is_in() || ep_addr.index() >= 4 {
+            return Err(UsbError::InvalidEndpoint);
+        }
+
+        self.out_ep[ep_addr.index()].write(buf)
     }
 
-    fn read_packet(&self, ep_addr: EndpointAddress, buf: &mut [u8]) -> Result<usize> {
+    pub fn read_packet(&self, ep_addr: EndpointAddress, buf: &mut [u8]) -> Result<usize> {
+        if !ep_addr.is_out() || ep_addr.index() >= 4 {
+            return Err(UsbError::InvalidEndpoint);
+        }
+
+        self.in_ep[ep_addr.index()].read(buf)
+    }
+
+    pub fn poll(&self) -> PollResult {
+        let mut ep_out = 0;
+        let mut ep_in_complete = 0;
+        let mut ep_setup = 0;
+
+        for ep in &self.in_ep {
+            if ep.ep_type.is_some() {
+                ep_in_complete |= (1 << ep.address.index());
+                // TODO
+            }
+        }
+
+        for ep in &self.out_ep {
+            if ep.ep_type.is_some() {
+                ep_out |= (1 << ep.address.index());
+                // TODO
+            }
+        }
+
+        if (ep_in_complete | ep_out | ep_setup) != 0 {
+            PollResult::Data { ep_out, ep_in_complete, ep_setup }
+        } else {
+            PollResult::None
+        }
+    }
+
+    pub fn set_stalled(&self, ep_addr: EndpointAddress, stalled: bool) {
         unimplemented!()
+        /*interrupt::free(|cs| {
+            if self.is_stalled(ep_addr) == stalled {
+                return
+            }
+
+            let ep = &self.endpoints[ep_addr.index()];
+
+            match (stalled, ep_addr.direction()) {
+                (true, UsbDirection::In) => ep.set_stat_tx(cs, EndpointStatus::Stall),
+                (true, UsbDirection::Out) => ep.set_stat_rx(cs, EndpointStatus::Stall),
+                (false, UsbDirection::In) => ep.set_stat_tx(cs, EndpointStatus::Nak),
+                (false, UsbDirection::Out) => ep.set_stat_rx(cs, EndpointStatus::Valid),
+            };
+        });*/
+    }
+
+    pub fn is_stalled(&self, ep_addr: EndpointAddress) -> bool {
+        unimplemented!()
+        /*let ep = &self.endpoints[ep_addr.index()];
+        let reg_v = ep.read_reg();
+
+        let status = match ep_addr.direction() {
+            UsbDirection::In => reg_v.stat_tx().bits(),
+            UsbDirection::Out => reg_v.stat_rx().bits(),
+        };
+
+        status == (EndpointStatus::Stall as u8)*/
     }
 }

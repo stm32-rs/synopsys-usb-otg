@@ -4,9 +4,10 @@ use usb_device::{Result, UsbDirection, UsbError};
 use usb_device::bus::{UsbBusAllocator, PollResult};
 use usb_device::endpoint::{EndpointType, EndpointAddress};
 use cortex_m::interrupt::{self, Mutex};
+use stm32ral::{read_reg, write_reg, modify_reg, otg_fs_global, otg_fs_device};
 
 use crate::target::{USB, apb_usb_enable, delay, NUM_ENDPOINTS, UsbRegisters, UsbPins};
-use crate::endpoint::{Endpoint, EndpointStatus, calculate_count_rx};
+use crate::endpoint::{Endpoint, EndpointStatus, calculate_count_rx, EndpointIndex};
 use crate::endpoint_memory::EndpointMemoryAllocator;
 
 
@@ -21,18 +22,18 @@ pub struct UsbBus<PINS> {
 
 impl<PINS: UsbPins+Sync> UsbBus<PINS> {
     /// Constructs a new USB peripheral driver.
-    pub fn new(regs: USB, _pins: PINS) -> UsbBusAllocator<Self> {
+    pub fn new(regs: USB, _pins: PINS, ep_memory: &'static mut [u32]) -> UsbBusAllocator<Self> {
         apb_usb_enable();
 
         let bus = UsbBus {
             regs: Mutex::new(UsbRegisters::new(regs)),
-            ep_allocator: EndpointMemoryAllocator::new(),
+            ep_allocator: EndpointMemoryAllocator::new(ep_memory),
             max_endpoint: 0,
             endpoints: unsafe {
                 let mut endpoints: [Endpoint; NUM_ENDPOINTS] = mem::uninitialized();
 
                 for i in 0..NUM_ENDPOINTS {
-                    endpoints[i] = Endpoint::new(i as u8);
+                    endpoints[i] = Endpoint::new(EndpointIndex::new(i as u8));
                 }
 
                 endpoints
@@ -41,30 +42,6 @@ impl<PINS: UsbPins+Sync> UsbBus<PINS> {
         };
 
         UsbBusAllocator::new(bus)
-    }
-
-    /// Simulates a disconnect from the USB bus, causing the host to reset and re-enumerate the
-    /// device.
-    ///
-    /// Mostly used for development. By calling this at the start of your program ensures that the
-    /// host re-enumerates your device after a new program has been flashed.
-    ///
-    /// `disconnect` parameter is used to provide a custom disconnect function.
-    /// This function will be called with USB peripheral powered down
-    /// and interrupts disabled.
-    /// It should perform disconnect in a platform-specific way.
-    pub fn force_reenumeration<F: FnOnce()>(&mut self, disconnect: F)
-    {
-        interrupt::free(|cs| {
-            let regs = self.regs.borrow(cs);
-
-            let pdwn = regs.cntr.read().pdwn().bit_is_set();
-            regs.cntr.modify(|_, w| w.pdwn().set_bit());
-
-            disconnect();
-
-            regs.cntr.modify(|_, w| w.pdwn().bit(pdwn));
-        });
     }
 }
 
@@ -116,7 +93,7 @@ impl<PINS: Send+Sync> usb_device::bus::UsbBus for UsbBus<PINS> {
     }
 
     fn enable(&mut self) {
-        let mut max = 0;
+        /*let mut max = 0;
         for (index, ep) in self.endpoints.iter().enumerate() {
             if ep.is_out_buf_set() || ep.is_in_buf_set() {
                 max = index;
@@ -145,25 +122,27 @@ impl<PINS: Send+Sync> usb_device::bus::UsbBus for UsbBus<PINS> {
 
             #[cfg(feature = "dp_pull_up_support")]
             regs.bcdr.modify(|_, w| w.dppu().set_bit());
-        });
+        });*/
     }
 
     fn reset(&self) {
-        interrupt::free(|cs| {
-            let regs = self.regs.borrow(cs);
-
-            regs.istr.modify(|_, w| unsafe { w.bits(0) });
-            regs.daddr.modify(|_, w| w.ef().set_bit().add().bits(0));
-
-            for ep in self.endpoints.iter() {
-                ep.configure(cs);
-            }
-        });
+//        interrupt::free(|cs| {
+//            let regs = self.regs.borrow(cs);
+//
+//            regs.istr.modify(|_, w| unsafe { w.bits(0) });
+//            regs.daddr.modify(|_, w| w.ef().set_bit().add().bits(0));
+//
+//            for ep in self.endpoints.iter() {
+//                ep.configure(cs);
+//            }
+//        });
     }
 
     fn set_device_address(&self, addr: u8) {
         interrupt::free(|cs| {
-            self.regs.borrow(cs).daddr.modify(|_, w| w.add().bits(addr as u8));
+            let regs = self.regs.borrow(cs);
+
+            modify_reg!(otg_fs_device, regs.device, FS_DCFG, DAD: addr as u32);
         });
     }
 
@@ -171,26 +150,27 @@ impl<PINS: Send+Sync> usb_device::bus::UsbBus for UsbBus<PINS> {
         interrupt::free(|cs| {
             let regs = self.regs.borrow(cs);
 
-            let istr = regs.istr.read();
+            let (wkup, susp, reset, oep, iep) = read_reg!(otg_fs_global, regs.global, FS_GINTSTS,
+                WKUPINT, USBSUSP, USBRST, OEPINT, IEPINT
+            );
 
-            if istr.wkup().bit_is_set() {
-                // Interrupt flag bits are write-0-to-clear, other bits should be written as 1 to avoid
-                // race conditions
-                regs.istr.write(|w| unsafe { w.bits(0xffff) }.wkup().clear_bit() );
+            if wkup != 0 {
+                // Clear the interrupt
+                write_reg!(otg_fs_global, regs.global, FS_GINTSTS, WKUPINT: 1);
 
                 // Required by datasheet
-                regs.cntr.modify(|_, w| w.fsusp().clear_bit());
+                //regs.cntr.modify(|_, w| w.fsusp().clear_bit());
 
                 PollResult::Resume
-            } else if istr.reset().bit_is_set() {
-                regs.istr.write(|w| unsafe { w.bits(0xffff) }.reset().clear_bit() );
+            } else if reset != 0 {
+                write_reg!(otg_fs_global, regs.global, FS_GINTSTS, USBRST: 1);
 
                 PollResult::Reset
-            } else if istr.susp().bit_is_set() {
-                regs.istr.write(|w| unsafe { w.bits(0xffff) }.susp().clear_bit() );
+            } else if susp != 0 {
+                write_reg!(otg_fs_global, regs.global, FS_GINTSTS, USBSUSP: 1);
 
                 PollResult::Suspend
-            } else if istr.ctr().bit_is_set() {
+            } else if (oep | iep) != 0 {
                 let mut ep_out = 0;
                 let mut ep_in_complete = 0;
                 let mut ep_setup = 0;
@@ -242,7 +222,7 @@ impl<PINS: Send+Sync> usb_device::bus::UsbBus for UsbBus<PINS> {
     }
 
     fn set_stalled(&self, ep_addr: EndpointAddress, stalled: bool) {
-        interrupt::free(|cs| {
+        /*interrupt::free(|cs| {
             if self.is_stalled(ep_addr) == stalled {
                 return
             }
@@ -255,11 +235,12 @@ impl<PINS: Send+Sync> usb_device::bus::UsbBus for UsbBus<PINS> {
                 (false, UsbDirection::In) => ep.set_stat_tx(cs, EndpointStatus::Nak),
                 (false, UsbDirection::Out) => ep.set_stat_rx(cs, EndpointStatus::Valid),
             };
-        });
+        });*/
+        unimplemented!()
     }
 
     fn is_stalled(&self, ep_addr: EndpointAddress) -> bool {
-        let ep = &self.endpoints[ep_addr.index()];
+        /*let ep = &self.endpoints[ep_addr.index()];
         let reg_v = ep.read_reg();
 
         let status = match ep_addr.direction() {
@@ -267,22 +248,15 @@ impl<PINS: Send+Sync> usb_device::bus::UsbBus for UsbBus<PINS> {
             UsbDirection::Out => reg_v.stat_rx().bits(),
         };
 
-        status == (EndpointStatus::Stall as u8)
+        status == (EndpointStatus::Stall as u8)*/
+        unimplemented!()
     }
 
     fn suspend(&self) {
-        interrupt::free(|cs| {
-             self.regs.borrow(cs).cntr.modify(|_, w| w
-                .fsusp().set_bit()
-                .lpmode().set_bit());
-        });
+        // Nothing to do here?
     }
 
     fn resume(&self) {
-        interrupt::free(|cs| {
-            self.regs.borrow(cs).cntr.modify(|_, w| w
-                .fsusp().clear_bit()
-                .lpmode().clear_bit());
-        });
+        // Nothing to do here?
     }
 }

@@ -3,18 +3,11 @@ use vcell::VolatileCell;
 use crate::target::{UsbAccessType, EP_MEM_ADDR, EP_MEM_SIZE, NUM_ENDPOINTS};
 use usb_device::{Result, UsbError};
 
-const EP_MEM_PTR: *mut VolatileCell<UsbAccessType> = EP_MEM_ADDR as *mut VolatileCell<UsbAccessType>;
-
-pub struct EndpointBuffer(&'static mut [VolatileCell<UsbAccessType>]);
+pub struct EndpointBuffer(&'static mut [VolatileCell<u32>]);
 
 impl EndpointBuffer {
-    pub fn new(offset_bytes: usize, size_bytes: usize) -> Self {
-        let mem = unsafe {
-            slice::from_raw_parts_mut(
-                EP_MEM_PTR.offset((offset_bytes >> 1) as isize),
-                size_bytes >> 1)
-        };
-        Self(mem)
+    pub fn new(buffer: &'static mut [u32]) -> Self {
+        Self(unsafe { mem::transmute(buffer) })
     }
 
     #[inline(always)]
@@ -62,12 +55,6 @@ impl EndpointBuffer {
         }
     }
 
-    pub fn offset(&self) -> usize {
-        let buffer_address = self.0.as_ptr() as usize;
-        let index = (buffer_address - EP_MEM_ADDR) / mem::size_of::<UsbAccessType>();
-        index << 1
-    }
-
     pub fn capacity(&self) -> usize {
         self.0.len() << 1
     }
@@ -83,30 +70,33 @@ pub struct BufferDescriptor {
 
 pub struct EndpointMemoryAllocator {
     next_free_offset: usize,
+    memory: &'static mut [u32],
 }
 
 impl EndpointMemoryAllocator {
-    pub fn new() -> Self {
+    pub fn new(memory: &'static mut [u32]) -> Self {
         Self {
-            next_free_offset: NUM_ENDPOINTS * 8
+            next_free_offset: 0,
+            memory
         }
     }
 
     pub fn allocate_buffer(&mut self, size: usize) -> Result<EndpointBuffer> {
-        assert!(size & 1 == 0);
-        assert!(size < EP_MEM_SIZE);
+        assert!(size < 1024);
+
+        let size_words = (size + 3) / 4;
 
         let offset = self.next_free_offset;
-        if offset as usize + size > EP_MEM_SIZE {
+        if offset + size_words > self.memory.len() {
             return Err(UsbError::EndpointMemoryOverflow);
         }
 
-        self.next_free_offset += size;
+        self.next_free_offset += size_words;
 
-        Ok(EndpointBuffer::new(offset, size))
-    }
-
-    pub fn buffer_descriptor(index: u8) -> &'static BufferDescriptor {
-        unsafe { &*(EP_MEM_ADDR as *const BufferDescriptor).offset(index as isize) }
+        let buffer = unsafe {
+            let ptr = self.memory.as_mut_ptr().offset(offset as isize);
+            slice::from_raw_parts_mut(ptr, size_words)
+        };
+        Ok(EndpointBuffer::new(buffer))
     }
 }

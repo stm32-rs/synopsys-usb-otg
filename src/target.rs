@@ -8,7 +8,53 @@ pub use stm32f4xx_hal as hal;
 
 // USB PAC reexports
 pub use hal::stm32::OTG_FS_GLOBAL as USB;
+pub use hal::stm32::OTG_FS_GLOBAL;
+pub use hal::stm32::OTG_FS_DEVICE;
+pub use hal::stm32::OTG_FS_PWRCLK;
+
+use stm32ral::{read_reg, write_reg, modify_reg, reset_reg};
 use stm32ral::{otg_fs_global, otg_fs_device, otg_fs_pwrclk};
+
+pub fn init_core(instance: &otg_fs_global::Instance) {
+    modify_reg!(otg_fs_global, instance, FS_GAHBCFG,
+        GINT: 1, // Unmask the interrupt assertion to the application
+        TXFELVL: 0, // TXFE interrupt indicates that the IN Endpoint TxFIFO is half empty
+        PTXFELVL: 0 // PTXFE interrupt indicates that the Periodic TxFIFO is half empty
+    );
+
+    modify_reg!(otg_fs_global, instance, FS_GUSBCFG,
+        HNPCAP: 0, // HNP capability is not enabled
+        SRPCAP: 0, // SRP capability is not enabled
+        TOCAL: 0, // ??? FS timeout calibration
+        TRDT: 0xF, // ??? USB turnaround time
+        FDMOD: 1 // Force device mode
+    );
+
+    modify_reg!(otg_fs_global, instance, FS_GINTMSK,
+        OTGINT: 1, // OTG interrupt mask - unmasked
+        MMISM: 1 // Mode mismatch interrupt mask - unmasked
+    );
+}
+
+pub fn init_device(global: &otg_fs_global::Instance, device: &otg_fs_device::Instance) {
+    modify_reg!(otg_fs_device, device, FS_DCFG,
+        DSPD: 0b11, // Device speed: Full speed
+        NZLSOHSK: 1 // Send a STALL handshake on a nonzero-length status OUT transaction and
+                    // do not send the received OUT packet to the application
+    );
+
+    modify_reg!(otg_fs_global, global, FS_GINTMSK,
+        USBRST: 1,
+        ENUMDNEM: 1,
+        ESUSPM: 1,
+        USBSUSPM: 1,
+        SOFM: 1
+    );
+
+    modify_reg!(otg_fs_global, global, FS_GCCFG, VBUSBSEN: 1);
+
+    // Next: wait for USB reset
+}
 
 // Use bundled register definitions instead of device-specific ones
 // This should work because register definitions from newer chips seem to be

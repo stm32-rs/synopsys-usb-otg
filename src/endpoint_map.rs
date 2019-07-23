@@ -1,5 +1,6 @@
 use usb_device::endpoint::EndpointAddress;
 
+/// Maps EndpointAddress to 4-bit value
 pub struct EndpointMap
 {
     map: [u8; 16],
@@ -18,14 +19,14 @@ impl EndpointMap {
         }
     }
 
-    pub fn set(&mut self, ep_addr: EndpointAddress, index: u8) {
-        assert!(index < 16);
+    pub fn set(&mut self, ep_addr: EndpointAddress, value: u8) {
+        assert!(value < 16);
 
         let bit_index = addr2index(ep_addr);
         self.mask |= 1 << bit_index;
 
         let mask = 0xf << ((bit_index & 1) * 4);
-        let value = index << ((bit_index & 1) * 4);
+        let value = value << ((bit_index & 1) * 4);
         let b = &mut self.map[bit_index >> 1];
         *b = (*b & !mask) | value;
     }
@@ -64,8 +65,8 @@ impl Iterator for EndpointMapIterator<'_> {
     fn next(&mut self) -> Option<Self::Item> {
         while self.bit_index < 32 {
             let ep_addr = self.bit_index.rotate_right(1).into();
-            if let Some(index) = self.map.get(ep_addr) {
-                return Some((ep_addr, index));
+            if let Some(value) = self.map.get(ep_addr) {
+                return Some((ep_addr, value));
             }
             self.bit_index += 1;
         }

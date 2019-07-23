@@ -1,6 +1,6 @@
 use core::{slice, mem};
 use vcell::VolatileCell;
-use crate::target::{UsbAccessType, EP_MEM_ADDR, EP_MEM_SIZE, NUM_ENDPOINTS};
+use crate::target::UsbAccessType;
 use usb_device::{Result, UsbError};
 
 pub struct EndpointBuffer(&'static mut [VolatileCell<u32>]);

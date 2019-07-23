@@ -2,7 +2,7 @@ use core::mem;
 use cortex_m::interrupt::{self, Mutex, CriticalSection};
 use usb_device::{Result, UsbError, UsbDirection};
 use usb_device::endpoint::{EndpointType, EndpointAddress};
-use crate::endpoint_memory::{EndpointBuffer, EndpointMemoryAllocator};
+use crate::endpoint_memory::EndpointBuffer;
 use usb_device::bus::PollResult;
 use crate::ral::{endpoint_in, endpoint_out};
 use stm32ral::{read_reg, modify_reg};

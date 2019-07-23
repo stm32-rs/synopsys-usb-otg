@@ -1,13 +1,12 @@
 use core::marker::PhantomData;
-use core::mem;
 use usb_device::{Result, UsbDirection, UsbError};
 use usb_device::bus::{UsbBusAllocator, PollResult};
 use usb_device::endpoint::{EndpointType, EndpointAddress};
 use cortex_m::interrupt::{self, Mutex};
 use stm32ral::{read_reg, write_reg, modify_reg, otg_fs_global, otg_fs_device};
 
-use crate::target::{USB, apb_usb_enable, delay, NUM_ENDPOINTS, UsbRegisters, UsbPins};
-use crate::endpoint::{Endpoint, EndpointStatus, DeviceEndpoints};
+use crate::target::{USB, apb_usb_enable, delay, UsbRegisters, UsbPins};
+use crate::endpoint::DeviceEndpoints;
 use crate::endpoint_memory::EndpointMemoryAllocator;
 
 
@@ -16,7 +15,6 @@ pub struct UsbBus<PINS> {
     regs: Mutex<UsbRegisters>,
     endpoints: DeviceEndpoints,
     ep_allocator: EndpointMemoryAllocator,
-    max_endpoint: usize,
     pins: PhantomData<PINS>,
 }
 
@@ -28,7 +26,6 @@ impl<PINS: UsbPins+Sync> UsbBus<PINS> {
         let bus = UsbBus {
             regs: Mutex::new(UsbRegisters::new(regs)),
             ep_allocator: EndpointMemoryAllocator::new(ep_memory),
-            max_endpoint: 0,
             endpoints: DeviceEndpoints::new(),
             pins: PhantomData,
         };

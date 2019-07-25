@@ -4,7 +4,7 @@ use usb_device::{Result, UsbError, UsbDirection};
 use usb_device::endpoint::{EndpointType, EndpointAddress};
 use crate::endpoint_memory::EndpointBuffer;
 use usb_device::bus::PollResult;
-use crate::ral::{endpoint_in, endpoint_out};
+use crate::ral::{endpoint_in, endpoint_out, endpoint0_out};
 use stm32ral::{read_reg, write_reg, modify_reg, otg_fs_global};
 use crate::target::{fifo_write, fifo_read};
 
@@ -27,6 +27,7 @@ struct EndpointOut {
 pub struct Endpoint {
     buffer: Option<Mutex<EndpointBuffer>>,
     ep_type: Option<EndpointType>,
+    max_packet_size: u16,
     address: EndpointAddress,
 }
 
@@ -35,6 +36,7 @@ impl Endpoint {
         Endpoint {
             buffer: None,
             ep_type: None,
+            max_packet_size: 0,
             address,
         }
     }
@@ -79,30 +81,35 @@ impl Endpoint {
     }
 
     pub fn configure(&self, cs: &CriticalSection) {
-        /*let ep_type = match self.ep_type {
-            Some(t) => t,
-            None => { return },
-        };
+        if self.address.index() == 0 {
+            let mpsiz = match self.max_packet_size {
+                8 => 0b11,
+                16 => 0b10,
+                32 => 0b01,
+                64 => 0b00,
+                other => panic!("Unsupported EP0 size: {}", other),
+            };
 
-        self.reg().modify(|_, w| {
-            Self::set_invariant_values(w)
-                .ctr_rx().clear_bit()
-                // dtog_rx
-                // stat_rx
-                .ep_type().bits(ep_type.bits())
-                .ep_kind().clear_bit()
-                .ctr_tx().clear_bit()
-                // dtog_rx
-                // stat_tx
-        });
+            if self.address.is_in() {
+                let regs = endpoint_in::instance(self.address.index());
+                write_reg!(endpoint_in, regs, DIEPCTL, MPSIZ: mpsiz as u32);
+                write_reg!(endpoint_in, regs, DIEPTSIZ, PKTCNT: 0, XFRSIZ: self.max_packet_size as u32);
+                modify_reg!(endpoint_in, regs, DIEPCTL, EPENA: 1, SNAK: 1);
+            } else {
+                let regs = endpoint0_out::instance();
+                write_reg!(endpoint0_out, regs, DOEPTSIZ0, STUPCNT: 1, PKTCNT: 1, XFRSIZ: self.max_packet_size as u32);
+                modify_reg!(endpoint0_out, regs, DOEPCTL0, EPENA: 1, SNAK: 1);
+            }
 
-        self.set_stat_rx(cs,
-            if self.out_buf.is_some() { EndpointStatus::Valid }
-            else { EndpointStatus::Disabled} );
+            let global = unsafe { otg_fs_global::OTG_FS_GLOBAL::steal() };
+            write_reg!(otg_fs_global, global, FS_GNPTXFSIZ,
+                TX0FD: (self.max_packet_size as u32) >> 2,
+                TX0FSA: 0x200
+            );
 
-        self.set_stat_tx(cs,
-            if self.in_buf.is_some() { EndpointStatus::Nak }
-            else { EndpointStatus::Disabled} );*/
+        } else {
+            unimplemented!()
+        }
     }
 
     pub fn write(&self, buf: &[u8]) -> Result<()> {
@@ -203,13 +210,15 @@ impl DeviceEndpoints {
         if ep_dir == UsbDirection::Out {
             let ep = Self::find_free(&mut self.out_ep, ep_addr)?;
             ep.ep_type = Some(ep_type);
+            ep.max_packet_size = max_packet_size;
 
             // TODO: allocate buffers
 
             Ok(ep.address)
         } else {
-            let ep = Self::find_free(&mut self.out_ep, ep_addr)?;
+            let ep = Self::find_free(&mut self.in_ep, ep_addr)?;
             ep.ep_type = Some(ep_type);
+            ep.max_packet_size = max_packet_size;
 
             // TODO: allocate buffers
 
@@ -239,7 +248,7 @@ impl DeviceEndpoints {
         let mut ep_setup = 0;
 
         for ep in &self.in_ep {
-            if ep.ep_type.is_some() {
+            if ep.is_initialized() {
                 let ep_regs = endpoint_in::instance(ep.address.index());
                 if read_reg!(endpoint_in, ep_regs, DIEPINT, XFRC) != 0 {
                     write_reg!(endpoint_in, ep_regs, DIEPINT, XFRC: 1);
@@ -249,7 +258,7 @@ impl DeviceEndpoints {
         }
 
         for ep in &self.out_ep {
-            if ep.ep_type.is_some() {
+            if ep.is_initialized() {
                 let ep_regs = endpoint_out::instance(ep.address.index());
                 if read_reg!(endpoint_out, ep_regs, DOEPINT, XFRC) != 0 {
                     write_reg!(endpoint_out, ep_regs, DOEPINT, XFRC: 1);
@@ -275,5 +284,19 @@ impl DeviceEndpoints {
 
     pub fn is_stalled(&self, ep_addr: EndpointAddress) -> bool {
         self.out_ep[ep_addr.index()].is_stalled()
+    }
+
+    pub fn configure_all(&self, cs: &CriticalSection) {
+        for ep in &self.in_ep {
+            if ep.is_initialized() {
+                ep.configure(cs);
+            }
+        }
+
+        for ep in &self.out_ep {
+            if ep.is_initialized() {
+                ep.configure(cs);
+            }
+        }
     }
 }

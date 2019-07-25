@@ -144,6 +144,7 @@ pub use cortex_m::asm::delay;
 pub struct UsbRegisters {
     pub global: otg_fs_global::Instance,
     pub device: otg_fs_device::Instance,
+    pub pwrclk: otg_fs_pwrclk::Instance,
 }
 
 unsafe impl Send for UsbRegisters {}
@@ -153,6 +154,7 @@ impl UsbRegisters {
         Self {
             global: unsafe { otg_fs_global::OTG_FS_GLOBAL::steal() },
             device: unsafe { otg_fs_device::OTG_FS_DEVICE::steal() },
+            pwrclk: unsafe { otg_fs_pwrclk::OTG_FS_PWRCLK::steal() },
         }
     }
 

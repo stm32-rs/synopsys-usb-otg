@@ -67,9 +67,51 @@ pub type UsbAccessType = u32;
 pub const EP_MEM_ADDR: usize = 0x4000_6000;
 pub const EP_MEM_SIZE: usize = 1024;
 
+pub const OTG_FS_BASE: usize = 0x5000_0000;
+pub const FIFO_OFFSET: usize = 0x1000;
+pub const FIFO_SIZE: usize = 0x1000;
+
 
 pub const NUM_ENDPOINTS: usize = 8;
 
+#[inline(always)]
+fn fifo_ptr(channel: usize) -> &'static vcell::VolatileCell<u32> {
+    assert!(channel <= 15);
+    let address = OTG_FS_BASE + FIFO_OFFSET + channel * FIFO_SIZE;
+    unsafe { &*(address as *const vcell::VolatileCell<u32>) }
+}
+
+pub fn fifo_write(channel: impl Into<usize>, mut buf: &[u8]) {
+    let fifo = fifo_ptr(channel.into());
+
+    while buf.len() >= 4 {
+        let mut u32_bytes = [0u8; 4];
+        u32_bytes.copy_from_slice(&buf[..4]);
+        buf = &buf[4..];
+        fifo.set(u32::from_ne_bytes(u32_bytes));
+    }
+    if buf.len() > 0 {
+        let mut u32_bytes = [0u8; 4];
+        u32_bytes[..buf.len()].copy_from_slice(buf);
+        fifo.set(u32::from_ne_bytes(u32_bytes));
+    }
+}
+
+pub fn fifo_read(channel: impl Into<usize>, mut buf: &mut [u8]) {
+    let fifo = fifo_ptr(channel.into());
+
+    while buf.len() >= 4 {
+        let word = fifo.get();
+        let bytes = word.to_ne_bytes();
+        buf[..4].copy_from_slice(&bytes);
+        buf = &mut buf[4..];
+    }
+    if buf.len() > 0 {
+        let word = fifo.get();
+        let bytes = word.to_ne_bytes();
+        buf.copy_from_slice(&bytes[..buf.len()]);
+    }
+}
 
 /// Enables USB peripheral
 pub fn apb_usb_enable() {

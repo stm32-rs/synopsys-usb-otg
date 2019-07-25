@@ -5,7 +5,8 @@ use usb_device::endpoint::{EndpointType, EndpointAddress};
 use crate::endpoint_memory::EndpointBuffer;
 use usb_device::bus::PollResult;
 use crate::ral::{endpoint_in, endpoint_out};
-use stm32ral::{read_reg, modify_reg};
+use stm32ral::{read_reg, write_reg, modify_reg, otg_fs_global};
+use crate::target::{fifo_write, fifo_read};
 
 struct UnusedEndpoint {
     address: EndpointAddress,
@@ -105,56 +106,37 @@ impl Endpoint {
     }
 
     pub fn write(&self, buf: &[u8]) -> Result<()> {
-        unimplemented!()
-//        interrupt::free(|cs| {
-//            let in_buf = self.in_buf.as_ref().unwrap().borrow(cs);
-//
-//            if buf.len() > in_buf.capacity() {
-//                return Err(UsbError::BufferOverflow);
-//            }
-//
-//            let reg = self.reg();
-//
-//            match reg.read().stat_tx().bits().into() {
-//                EndpointStatus::Valid | EndpointStatus::Disabled => return Err(UsbError::WouldBlock),
-//                _ => {},
-//            };
-//
-//            in_buf.write(buf);
-//            self.descr().count_tx.set(buf.len() as u16 as UsbAccessType);
-//
-//            self.set_stat_tx(cs, EndpointStatus::Valid);
-//
-//            Ok(())
-//        })
+        let ep = endpoint_in::instance(self.address.index());
+        if read_reg!(endpoint_in, ep, DIEPCTL, USBAEP) != 0 {
+            return Err(UsbError::InvalidEndpoint);
+        }
+        if read_reg!(endpoint_in, ep, DIEPTSIZ, PKTCNT) != 0 {
+            return Err(UsbError::WouldBlock);
+        }
+
+        let ep = endpoint_in::instance(self.address.index());
+        write_reg!(endpoint_in, ep, DIEPTSIZ, PKTCNT: 1, XFRSIZ: buf.len() as u32);
+        modify_reg!(endpoint_in, ep, DIEPCTL, CNAK: 1, EPENA: 1);
+
+        fifo_write(self.address.index(), buf);
+
+        Ok(())
     }
 
     pub fn read(&self, buf: &mut [u8]) -> Result<usize> {
-        unimplemented!()
-//        interrupt::free(|cs| {
-//            let out_buf = self.out_buf.as_ref().unwrap().borrow(cs);
-//
-//            let reg_v = self.reg().read();
-//
-//            let status: EndpointStatus = reg_v.stat_rx().bits().into();
-//
-//            if status == EndpointStatus::Disabled || !reg_v.ctr_rx().bit_is_set() {
-//                return Err(UsbError::WouldBlock);
-//            }
-//
-//            self.clear_ctr_rx(cs);
-//
-//            let count = (self.descr().count_rx.get() & 0x3ff) as usize;
-//            if count > buf.len() {
-//                return Err(UsbError::BufferOverflow);
-//            }
-//
-//            out_buf.read(&mut buf[0..count]);
-//
-//            self.set_stat_rx(cs, EndpointStatus::Valid);
-//
-//            Ok(count)
-//        })
+        let ep = endpoint_out::instance(self.address.index());
+        if read_reg!(endpoint_out, ep, DOEPCTL, USBAEP) != 0 {
+            return Err(UsbError::InvalidEndpoint);
+        }
+
+        let global = unsafe { otg_fs_global::OTG_FS_GLOBAL::steal() };
+        let count = read_reg!(otg_fs_global, global, GRXSTSP, BCNT) as usize;
+
+        assert!(count <= buf.len());
+
+        fifo_read(0usize, &mut buf[..count]);
+
+        Ok(count)
     }
 }
 
@@ -240,7 +222,7 @@ impl DeviceEndpoints {
             return Err(UsbError::InvalidEndpoint);
         }
 
-        self.out_ep[ep_addr.index()].write(buf)
+        self.in_ep[ep_addr.index()].write(buf)
     }
 
     pub fn read_packet(&self, ep_addr: EndpointAddress, buf: &mut [u8]) -> Result<usize> {
@@ -248,7 +230,7 @@ impl DeviceEndpoints {
             return Err(UsbError::InvalidEndpoint);
         }
 
-        self.in_ep[ep_addr.index()].read(buf)
+        self.out_ep[ep_addr.index()].read(buf)
     }
 
     pub fn poll(&self) -> PollResult {
@@ -258,15 +240,25 @@ impl DeviceEndpoints {
 
         for ep in &self.in_ep {
             if ep.ep_type.is_some() {
-                ep_in_complete |= (1 << ep.address.index());
-                // TODO
+                let ep_regs = endpoint_in::instance(ep.address.index());
+                if read_reg!(endpoint_in, ep_regs, DIEPINT, XFRC) != 0 {
+                    write_reg!(endpoint_in, ep_regs, DIEPINT, XFRC: 1);
+                    ep_in_complete |= (1 << ep.address.index());
+                }
             }
         }
 
         for ep in &self.out_ep {
             if ep.ep_type.is_some() {
-                ep_out |= (1 << ep.address.index());
-                // TODO
+                let ep_regs = endpoint_out::instance(ep.address.index());
+                if read_reg!(endpoint_out, ep_regs, DOEPINT, XFRC) != 0 {
+                    write_reg!(endpoint_out, ep_regs, DOEPINT, XFRC: 1);
+                    ep_out |= (1 << ep.address.index());
+                }
+                if read_reg!(endpoint_out, ep_regs, DOEPINT, STUP) != 0 {
+                    write_reg!(endpoint_out, ep_regs, DOEPINT, STUP: 1);
+                    ep_setup |= (1 << ep.address.index());
+                }
             }
         }
 

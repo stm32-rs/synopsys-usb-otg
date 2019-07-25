@@ -158,37 +158,6 @@ impl Endpoint {
     }
 }
 
-trait EndpointTypeExt {
-    fn bits(self) -> u8;
-}
-
-impl EndpointTypeExt for EndpointType {
-    fn bits(self) -> u8 {
-        const BITS: [u8; 4] = [0b01, 0b10, 0b00, 0b11];
-        return BITS[self as usize];
-    }
-}
-
-#[repr(u8)]
-#[derive(PartialEq, Eq, Debug)]
-#[allow(unused)]
-pub enum EndpointStatus {
-    Disabled = 0b00,
-    Stall = 0b01,
-    Nak = 0b10,
-    Valid = 0b11,
-}
-
-impl From<u8> for EndpointStatus {
-    fn from(v: u8) -> EndpointStatus {
-        if v <= 0b11 {
-            unsafe { mem::transmute(v) }
-        } else {
-            EndpointStatus::Disabled
-        }
-    }
-}
-
 
 pub struct DeviceEndpoints {
     out_ep: [Endpoint; 4],

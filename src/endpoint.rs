@@ -8,21 +8,6 @@ use crate::ral::{endpoint_in, endpoint_out, endpoint0_out};
 use stm32ral::{read_reg, write_reg, modify_reg, otg_fs_global};
 use crate::target::{fifo_write, fifo_read};
 
-struct UnusedEndpoint {
-    address: EndpointAddress,
-}
-
-struct EndpointIn {
-    address: EndpointAddress,
-    ep_type: EndpointType,
-}
-
-struct EndpointOut {
-    address: EndpointAddress,
-    ep_type: EndpointType,
-    buffer: Mutex<EndpointBuffer>,
-}
-
 /// Arbitrates access to the endpoint-specific registers and packet buffer memory.
 pub struct Endpoint {
     buffer: Option<Mutex<EndpointBuffer>>,

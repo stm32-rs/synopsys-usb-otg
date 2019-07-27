@@ -6,8 +6,7 @@ extern crate panic_semihosting;
 use cortex_m_rt::entry;
 use stm32f4xx_hal::{prelude::*, stm32};
 
-use stm32f429_usbd_fs::UsbBus;
-use usb_device::test_class::TestClass;
+use stm32f429_usbd_fs::{UsbBus, sprintln};
 use usb_device::prelude::*;
 
 static mut EP_MEMORY: [u32; 1024] = [0; 1024];
@@ -24,6 +23,11 @@ fn main() -> ! {
         .sysclk(48.mhz())
         .pclk1(24.mhz())
         .freeze();
+
+    let gpiod = dp.GPIOD.split();
+    stm32f429_usbd_fs::debug::configure(dp.USART3, gpiod.pd8, gpiod.pd9, 115_200.bps(), clocks);
+
+    sprintln!("==========================");
 
     let mut gpioa = dp.GPIOA.split();
 

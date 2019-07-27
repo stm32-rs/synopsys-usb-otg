@@ -19,3 +19,5 @@ pub type UsbBusType = UsbBus<UsbPinsType>;
 
 mod pac;
 mod ral;
+
+pub mod debug;

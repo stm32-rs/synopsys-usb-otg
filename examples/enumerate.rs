@@ -9,6 +9,8 @@ use stm32f4xx_hal::{prelude::*, stm32};
 use stm32f429_usbd_fs::{UsbBus, sprintln};
 use usb_device::prelude::*;
 
+use stm32f4xx_hal::gpio::Speed;
+
 static mut EP_MEMORY: [u32; 1024] = [0; 1024];
 
 #[entry]
@@ -31,8 +33,9 @@ fn main() -> ! {
 
     let mut gpioa = dp.GPIOA.split();
 
-    let usb_dm = gpioa.pa11.into_alternate_af10();
-    let usb_dp = gpioa.pa12.into_alternate_af10();
+    // 100MHz GPIO speed
+    let usb_dm = gpioa.pa11.into_alternate_af10().set_speed(Speed::VeryHigh);
+    let usb_dp = gpioa.pa12.into_alternate_af10().set_speed(Speed::VeryHigh);
 
     let usb_bus = UsbBus::new(dp.OTG_FS_GLOBAL, (usb_dm, usb_dp), unsafe { &mut EP_MEMORY });
 

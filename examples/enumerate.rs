@@ -17,7 +17,7 @@ static mut EP_MEMORY: [u32; 1024] = [0; 1024];
 fn main() -> ! {
     let dp = stm32::Peripherals::take().unwrap();
 
-    let mut rcc = dp.RCC.constrain();
+    let rcc = dp.RCC.constrain();
 
     let clocks = rcc
         .cfgr
@@ -31,7 +31,7 @@ fn main() -> ! {
 
     sprintln!("==========================");
 
-    let mut gpioa = dp.GPIOA.split();
+    let gpioa = dp.GPIOA.split();
 
     // 100MHz GPIO speed
     let usb_dm = gpioa.pa11.into_alternate_af10().set_speed(Speed::VeryHigh);

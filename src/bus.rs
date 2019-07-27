@@ -1,11 +1,11 @@
 use core::marker::PhantomData;
-use usb_device::{Result, UsbDirection, UsbError};
+use usb_device::{Result, UsbDirection};
 use usb_device::bus::{UsbBusAllocator, PollResult};
 use usb_device::endpoint::{EndpointType, EndpointAddress};
 use cortex_m::interrupt::{self, Mutex};
 use stm32ral::{read_reg, write_reg, modify_reg, otg_fs_global, otg_fs_device, otg_fs_pwrclk};
 
-use crate::target::{USB, apb_usb_enable, delay, UsbRegisters, UsbPins};
+use crate::target::{USB, apb_usb_enable, UsbRegisters, UsbPins};
 use crate::endpoint::DeviceEndpoints;
 use crate::endpoint_memory::EndpointMemoryAllocator;
 

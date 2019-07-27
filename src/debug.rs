@@ -9,15 +9,12 @@ use stm32f4xx_hal::{
     stm32::USART3,
     prelude::*
 };
-use stm32f4xx_hal::gpio::{gpiod::{PD8, PD9}, Alternate, AF7};
+use stm32f4xx_hal::gpio::gpiod::{PD8, PD9};
 use stm32f4xx_hal::rcc::Clocks;
 use stm32f4xx_hal::serial::config::Config;
 
 
 static mut STDOUT: Option<SerialWrapper> = None;
-
-type TxPin = PD8<Alternate<AF7>>;
-type RxPin = PD9<Alternate<AF7>>;
 
 struct SerialWrapper(Tx<USART3>);
 

@@ -1,4 +1,3 @@
-use core::mem;
 use cortex_m::interrupt::{self, Mutex, CriticalSection};
 use usb_device::{Result, UsbError, UsbDirection};
 use usb_device::endpoint::{EndpointType, EndpointAddress};
@@ -65,7 +64,7 @@ impl Endpoint {
         self.ep_type = Some(ep_type);
     }
 
-    pub fn configure(&self, cs: &CriticalSection) {
+    pub fn configure(&self, _cs: &CriticalSection) {
         if self.address.index() == 0 {
             let mpsiz = match self.max_packet_size {
                 8 => 0b11,
@@ -237,7 +236,7 @@ impl DeviceEndpoints {
                 let ep_regs = endpoint_in::instance(ep.address.index());
                 if read_reg!(endpoint_in, ep_regs, DIEPINT, XFRC) != 0 {
                     write_reg!(endpoint_in, ep_regs, DIEPINT, XFRC: 1);
-                    ep_in_complete |= (1 << ep.address.index());
+                    ep_in_complete |= 1 << ep.address.index();
                 }
             }
         }
@@ -247,11 +246,11 @@ impl DeviceEndpoints {
                 let ep_regs = endpoint_out::instance(ep.address.index());
                 if read_reg!(endpoint_out, ep_regs, DOEPINT, XFRC) != 0 {
                     write_reg!(endpoint_out, ep_regs, DOEPINT, XFRC: 1);
-                    ep_out |= (1 << ep.address.index());
+                    ep_out |= 1 << ep.address.index();
                 }
                 if read_reg!(endpoint_out, ep_regs, DOEPINT, STUP) != 0 {
                     write_reg!(endpoint_out, ep_regs, DOEPINT, STUP: 1);
-                    ep_setup |= (1 << ep.address.index());
+                    ep_setup |= 1 << ep.address.index();
                 }
             }
         }

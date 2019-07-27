@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use core::{slice, mem};
 use vcell::VolatileCell;
 use crate::target::UsbAccessType;

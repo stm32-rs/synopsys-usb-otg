@@ -48,7 +48,7 @@ impl<PINS: Send+Sync> usb_device::bus::UsbBus for UsbBus<PINS> {
     }
 
     fn enable(&mut self) {
-        sprintln!("enable()");
+        //sprintln!("enable()");
 
         // Enable USB_OTG in RCC
         apb_usb_enable();
@@ -166,7 +166,6 @@ impl<PINS: Send+Sync> usb_device::bus::UsbBus for UsbBus<PINS> {
             );
 
             if reset != 0 {
-                //sprintln!("reset int");
                 write_reg!(otg_fs_global, regs.global, FS_GINTSTS, USBRST: 1);
 
                 self.endpoints.deconfigure_all(cs);
@@ -176,8 +175,7 @@ impl<PINS: Send+Sync> usb_device::bus::UsbBus for UsbBus<PINS> {
                 while read_reg!(otg_fs_global, regs.global, FS_GRSTCTL, RXFFLSH) == 1 {}
             }
 
-            let r = if enum_done != 0 {
-                //sprintln!("enum done int");
+            if enum_done != 0 {
                 write_reg!(otg_fs_global, regs.global, FS_GINTSTS, ENUMDNE: 1);
 
                 PollResult::Reset
@@ -197,12 +195,7 @@ impl<PINS: Send+Sync> usb_device::bus::UsbBus for UsbBus<PINS> {
                 self.endpoints.poll()
             } else {
                 PollResult::None
-            };
-            let v2 = read_reg!(otg_fs_global, regs.global, FS_GINTSTS);
-            if r != PollResult::None {
-                //sprintln!("poll result: {:?} {:08x}->{:08x}", r, v, v2);
             }
-            r
         })
     }
 }

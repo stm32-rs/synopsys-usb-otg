@@ -1,10 +1,10 @@
 use cortex_m::interrupt::{self, CriticalSection, Mutex};
 use usb_device::{Result, UsbError};
 use usb_device::endpoint::{EndpointType, EndpointAddress};
-use crate::endpoint_memory::EndpointBuffer;
+use crate::endpoint_memory::{EndpointBuffer, EndpointBufferState};
 use crate::ral::{endpoint_in, endpoint_out, endpoint0_out};
-use stm32ral::{read_reg, write_reg, modify_reg, otg_fs_global, otg_fs_device};
-use crate::target::{fifo_write, fifo_read};
+use stm32ral::{read_reg, write_reg, modify_reg, otg_fs_device};
+use crate::target::fifo_write;
 use core::ops::{Deref, DerefMut};
 use core::cell::RefCell;
 
@@ -169,7 +169,7 @@ impl EndpointIn {
 
 pub struct EndpointOut {
     common: Endpoint,
-    buffer: Mutex<RefCell<EndpointBuffer>>,
+    pub(crate) buffer: Mutex<RefCell<EndpointBuffer>>,
 }
 
 impl EndpointOut {
@@ -194,24 +194,15 @@ impl EndpointOut {
             return Err(UsbError::InvalidEndpoint);
         }
 
-        let global = unsafe { otg_fs_global::OTG_FS_GLOBAL::steal() };
+        interrupt::free(|cs| {
+            self.buffer.borrow(cs).borrow_mut().read_packet(buf)
+        })
+    }
 
-        let epnum = read_reg!(otg_fs_global, global, FS_GRXSTSR, EPNUM) as usize;
-        if epnum != self.address.index() {
-            return Err(UsbError::WouldBlock);
-        }
-
-        let count = read_reg!(otg_fs_global, global, FS_GRXSTSR, BCNT) as usize;
-        if count > buf.len() {
-            return Err(UsbError::BufferOverflow);
-        }
-
-        // pop GRXSTSP
-        read_reg!(otg_fs_global, global, GRXSTSP);
-
-        fifo_read(&mut buf[..count]);
-
-        Ok(count)
+    pub fn buffer_state(&self) -> EndpointBufferState {
+        interrupt::free(|cs| {
+            self.buffer.borrow(cs).borrow().state()
+        })
     }
 }
 

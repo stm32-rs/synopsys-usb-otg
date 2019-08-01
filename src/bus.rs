@@ -7,7 +7,7 @@ use stm32ral::{read_reg, write_reg, modify_reg, otg_fs_global, otg_fs_device, ot
 
 use crate::target::{OTG_FS_GLOBAL, OTG_FS_DEVICE, OTG_FS_PWRCLK, apb_usb_enable, UsbRegisters, UsbPins};
 use crate::endpoint::{EndpointIn, EndpointOut, Endpoint};
-use crate::endpoint_memory::EndpointMemoryAllocator;
+use crate::endpoint_memory::{EndpointMemoryAllocator, EndpointBufferState};
 use core::ops::Deref;
 
 const RX_FIFO_SIZE: u32 = 32;
@@ -285,17 +285,16 @@ impl<PINS: Send+Sync> usb_device::bus::UsbBus for UsbBus<PINS> {
                 write_reg!(otg_fs_global, regs.global, FS_GINTSTS, USBSUSP: 1);
 
                 PollResult::Suspend
-            } else if (iep | rxflvl) != 0 {
-                // Flags are read-only, there is no need to clear them
-
+            } else {
                 let mut ep_out = 0;
                 let mut ep_in_complete = 0;
                 let mut ep_setup = 0;
 
                 use crate::ral::{endpoint_in, endpoint_out};
 
+                // RXFLVL & IEPINT flags are read-only, there is no need to clear them
                 if rxflvl != 0 {
-                    let (epnum, status) = read_reg!(otg_fs_global, regs.global, FS_GRXSTSR, EPNUM, PKTSTS);
+                    let (epnum, data_size, status) = read_reg!(otg_fs_global, regs.global, FS_GRXSTSR, EPNUM, BCNT, PKTSTS);
                     match status {
                         0x02 => { // OUT received
                             ep_out |= 1 << epnum;
@@ -318,6 +317,18 @@ impl<PINS: Send+Sync> usb_device::bus::UsbBus for UsbBus<PINS> {
                             read_reg!(otg_fs_global, regs.global, GRXSTSP); // pop GRXSTSP
                         }
                     }
+
+                    if status == 0x02 || status == 0x06 {
+                        let ep = &self.endpoints_out[epnum as usize];
+
+                        let mut buffer = ep.buffer.borrow(cs).borrow_mut();
+                        if buffer.state() == EndpointBufferState::Empty {
+                            read_reg!(otg_fs_global, regs.global, GRXSTSP); // pop GRXSTSP
+
+                            let is_setup = status == 0x06;
+                            buffer.fill_from_fifo(data_size as u16, is_setup).ok();
+                        }
+                    }
                 }
 
                 if iep != 0 {
@@ -332,13 +343,25 @@ impl<PINS: Send+Sync> usb_device::bus::UsbBus for UsbBus<PINS> {
                     }
                 }
 
+                for ep in &self.endpoints_out {
+                    if ep.is_initialized() {
+                        match ep.buffer_state() {
+                            EndpointBufferState::DataOut => {
+                                ep_out |= 1 << ep.address().index();
+                            },
+                            EndpointBufferState::DataSetup => {
+                                ep_setup |= 1 << ep.address().index();
+                            },
+                            EndpointBufferState::Empty => {},
+                        }
+                    }
+                }
+
                 if (ep_in_complete | ep_out | ep_setup) != 0 {
                     PollResult::Data { ep_out, ep_in_complete, ep_setup }
                 } else {
                     PollResult::None
                 }
-            } else {
-                PollResult::None
             }
         })
     }

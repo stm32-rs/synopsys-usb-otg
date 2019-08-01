@@ -4,6 +4,7 @@ use vcell::VolatileCell;
 use crate::target::fifo_read_into;
 use usb_device::{Result, UsbError};
 
+#[derive(Eq, PartialEq)]
 pub enum EndpointBufferState {
     Empty,
     DataOut,

@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use core::{slice, mem};
 use vcell::VolatileCell;
-use crate::target::{UsbAccessType, fifo_read_into};
+use crate::target::fifo_read_into;
 use usb_device::{Result, UsbError};
 
 #[derive(Default)]
@@ -81,13 +81,6 @@ impl EndpointBuffer {
 
 unsafe impl Sync for EndpointBuffer {}
 
-#[repr(C)]
-pub struct BufferDescriptor {
-    pub addr_tx: VolatileCell<UsbAccessType>,
-    pub count_tx: VolatileCell<UsbAccessType>,
-    pub addr_rx: VolatileCell<UsbAccessType>,
-    pub count_rx: VolatileCell<UsbAccessType>,
-}
 
 pub struct EndpointMemoryAllocator {
     next_free_offset: usize,

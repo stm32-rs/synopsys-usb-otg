@@ -58,17 +58,6 @@ pub fn init_device(global: &otg_fs_global::Instance, device: &otg_fs_device::Ins
     // Next: wait for USB reset
 }
 
-// Use bundled register definitions instead of device-specific ones
-// This should work because register definitions from newer chips seem to be
-// compatible with definitions for older ones.
-pub use crate::pac::usb;
-
-
-// TODO: remove these
-pub type UsbAccessType = u32;
-pub const EP_MEM_ADDR: usize = 0x4000_6000;
-pub const EP_MEM_SIZE: usize = 1024;
-
 pub const OTG_FS_BASE: usize = 0x5000_0000;
 pub const FIFO_OFFSET: usize = 0x1000;
 pub const FIFO_SIZE: usize = 0x1000;
@@ -167,11 +156,6 @@ impl UsbRegisters {
             device: unsafe { otg_fs_device::OTG_FS_DEVICE::steal() },
             pwrclk: unsafe { otg_fs_pwrclk::OTG_FS_PWRCLK::steal() },
         }
-    }
-
-    pub fn ep_register(index: u8) -> &'static usb::EPR {
-        let usb_ptr = USB::ptr() as *const usb::RegisterBlock;
-        unsafe { &(*usb_ptr).epr[index as usize] }
     }
 }
 

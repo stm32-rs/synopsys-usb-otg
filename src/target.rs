@@ -97,8 +97,8 @@ pub fn fifo_write(channel: impl Into<usize>, mut buf: &[u8]) {
     }
 }
 
-pub fn fifo_read(channel: impl Into<usize>, mut buf: &mut [u8]) {
-    let fifo = fifo_ptr(channel.into());
+pub fn fifo_read(mut buf: &mut [u8]) {
+    let fifo = fifo_ptr(0);
 
     while buf.len() >= 4 {
         let word = fifo.get();

@@ -165,7 +165,7 @@ impl Endpoint {
         // pop GRXSTSP
         read_reg!(otg_fs_global, global, GRXSTSP);
 
-        fifo_read(0usize, &mut buf[..count]);
+        fifo_read(&mut buf[..count]);
 
         Ok(count)
     }

@@ -301,7 +301,7 @@ impl<PINS: Send+Sync> usb_device::bus::UsbBus for UsbBus<PINS> {
                             ep_out |= 1 << epnum;
                         }
                         0x06 => { // SETUP received
-                            // flushing TX if sonething stuck in control endpoint
+                            // flushing TX if something stuck in control endpoint
                             let ep = endpoint_in::instance(epnum as usize);
                             if read_reg!(endpoint_in, ep, DIEPTSIZ, PKTCNT) != 0 {
                                 modify_reg!(otg_fs_global, regs.global, FS_GRSTCTL, TXFNUM: epnum, TXFFLSH: 1);

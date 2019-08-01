@@ -152,7 +152,6 @@ impl EndpointIn {
             return Err(UsbError::WouldBlock);
         }
 
-        let ep = endpoint_in::instance(self.address.index());
         write_reg!(endpoint_in, ep, DIEPTSIZ, PKTCNT: 1, XFRSIZ: buf.len() as u32);
         modify_reg!(endpoint_in, ep, DIEPCTL, CNAK: 1, EPENA: 1);
 

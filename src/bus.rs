@@ -4,10 +4,13 @@ use usb_device::bus::{UsbBusAllocator, PollResult};
 use usb_device::endpoint::{EndpointType, EndpointAddress};
 use cortex_m::interrupt::{self, Mutex};
 use stm32ral::{read_reg, write_reg, modify_reg, otg_fs_global, otg_fs_device, otg_fs_pwrclk};
+use crate::sprintln;
 
 use crate::target::{USB, apb_usb_enable, UsbRegisters, UsbPins};
 use crate::endpoint::DeviceEndpoints;
 use crate::endpoint_memory::EndpointMemoryAllocator;
+
+const RX_FIFO_SIZE: u32 = 32;
 
 
 /// USB peripheral driver for STM32 microcontrollers.
@@ -21,8 +24,6 @@ pub struct UsbBus<PINS> {
 impl<PINS: UsbPins+Sync> UsbBus<PINS> {
     /// Constructs a new USB peripheral driver.
     pub fn new(regs: USB, _pins: PINS, ep_memory: &'static mut [u32]) -> UsbBusAllocator<Self> {
-        apb_usb_enable();
-
         let bus = UsbBus {
             regs: Mutex::new(UsbRegisters::new(regs)),
             ep_allocator: EndpointMemoryAllocator::new(ep_memory),
@@ -47,109 +48,70 @@ impl<PINS: Send+Sync> usb_device::bus::UsbBus for UsbBus<PINS> {
     }
 
     fn enable(&mut self) {
+        sprintln!("enable()");
+
+        // Enable USB_OTG in RCC
+        apb_usb_enable();
+
         interrupt::free(|cs| {
             let regs = self.regs.borrow(cs);
 
-            modify_reg!(otg_fs_global, regs.global, FS_GUSBCFG, PHYSEL: 1);
+            //modify_reg!(otg_fs_global, regs.global, FS_GUSBCFG, PHYSEL: 1);
 
-            // Wait for AHB idle.
+            // Wait for AHB ready
             while read_reg!(otg_fs_global, regs.global, FS_GRSTCTL, AHBIDL) == 0 {}
 
-            // Do core soft reset.
-            modify_reg!(otg_fs_global, regs.global, FS_GRSTCTL, CSRST: 1);
-            while read_reg!(otg_fs_global, regs.global, FS_GRSTCTL, CSRST) != 0 {}
-
-            // Enable VBUS sensing in device mode and power up the PHY.
-            modify_reg!(otg_fs_global, regs.global, FS_GCCFG, VBUSBSEN: 1, PWRDWN: 1);
-
-            // Explicitly enable DP pullup (not all cores do this by default)
-            modify_reg!(otg_fs_device, regs.device, FS_DCTL, SDIS: 0);
-
-            // Force peripheral only mode.
+            // Configure OTG as device
             modify_reg!(otg_fs_global, regs.global, FS_GUSBCFG,
-                TRDT: 0xF, // ??? USB turnaround time
+                SRPCAP: 0, // SRP capability is not enabled
+                TRDT: 0x6, // ??? USB turnaround time
                 FDMOD: 1 // Force device mode
             );
 
-            modify_reg!(otg_fs_global, regs.global, FS_GINTSTS, MMIS: 1);
+            // Configuring Vbus sense and SOF output
+            //write_reg!(otg_fs_global, regs.global, FS_GCCFG, VBUSBSEN: 1);
+            write_reg!(otg_fs_global, regs.global, FS_GCCFG, 1 << 21); // set NOVBUSSENS
 
+            // Enable PHY clock
+            write_reg!(otg_fs_pwrclk, regs.pwrclk, FS_PCGCCTL, 0);
+
+            // Soft disconnect device
+            modify_reg!(otg_fs_device, regs.device, FS_DCTL, SDIS: 1);
+
+            // Setup USB FS speed [and frame interval]
             modify_reg!(otg_fs_device, regs.device, FS_DCFG,
                 DSPD: 0b11 // Device speed: Full speed
             );
 
-            /*
+            // Setting max RX FIFO size
+            write_reg!(otg_fs_global, regs.global, FS_GRXFSIZ, RX_FIFO_SIZE);
 
-            modify_reg!(otg_fs_global, regs.global, FS_GUSBCFG,
-                HNPCAP: 0, // HNP capability is not enabled
-                SRPCAP: 0, // SRP capability is not enabled
-                TOCAL: 0, // ??? FS timeout calibration
-                TRDT: 0xF, // ??? USB turnaround time
-                FDMOD: 1 // Force device mode
+            // setting up EP0 TX FIFO SZ as 64 byte
+            write_reg!(otg_fs_global, regs.global, FS_GNPTXFSIZ,
+                TX0FD: 16,
+                TX0FSA: RX_FIFO_SIZE
             );
 
-            modify_reg!(otg_fs_global, regs.global, FS_GINTMSK,
-                OTGINT: 1, // OTG interrupt mask - unmasked
-                MMISM: 1 // Mode mismatch interrupt mask - unmasked
+            // unmask EP interrupts
+            write_reg!(otg_fs_device, regs.device, DIEPMSK, XFRCM: 1);
+
+            // unmask core interrupts
+            write_reg!(otg_fs_global, regs.global, FS_GINTMSK,
+                USBRST: 1, ENUMDNEM: 1,
+                USBSUSPM: 1, WUIM: 1,
+                IEPINT: 1, RXFLVLM: 1
             );
 
-            modify_reg!(otg_fs_device, regs.device, FS_DCFG,
-                DSPD: 0b11, // Device speed: Full speed
-                NZLSOHSK: 1 // Send a STALL handshake on a nonzero-length status OUT transaction and
-                            // do not send the received OUT packet to the application
-            );
+            // clear pending interrupts
+            write_reg!(otg_fs_global, regs.global, FS_GINTSTS, 0xffffffff);
 
-            */
+            // unmask global interrupt
+            modify_reg!(otg_fs_global, regs.global, FS_GAHBCFG, GINT: 1);
 
-            // Restart the PHY clock.
-            write_reg!(otg_fs_pwrclk, regs.pwrclk, FS_PCGCCTL, 0);
-
-            write_reg!(otg_fs_global, regs.global, FS_GRXFSIZ, 128);
-
-            modify_reg!(otg_fs_global, regs.global, FS_GAHBCFG,
-                GINT: 1, // Unmask the interrupt assertion to the application
-                TXFELVL: 0, // TXFE interrupt indicates that the IN Endpoint TxFIFO is half empty
-                PTXFELVL: 0 // PTXFE interrupt indicates that the Periodic TxFIFO is half empty
-            );
-
-            modify_reg!(otg_fs_global, regs.global, FS_GINTMSK,
-                USBRST: 1,
-                ENUMDNEM: 1,
-                ESUSPM: 1,
-                USBSUSPM: 1,
-                SOFM: 1
-            );
+            // connect(true)
+            modify_reg!(otg_fs_global, regs.global, FS_GCCFG, PWRDWN: 1);
+            modify_reg!(otg_fs_device, regs.device, FS_DCTL, SDIS: 0);
         });
-
-        /*let mut max = 0;
-        for (index, ep) in self.endpoints.iter().enumerate() {
-            if ep.is_out_buf_set() || ep.is_in_buf_set() {
-                max = index;
-            }
-        }
-
-        self.max_endpoint = max;
-
-        interrupt::free(|cs| {
-            let regs = self.regs.borrow(cs);
-
-            regs.cntr.modify(|_, w| w.pdwn().clear_bit());
-
-            // There is a chip specific startup delay. For STM32F103xx it's 1µs and this should wait for
-            // at least that long.
-            delay(72);
-
-            regs.btable.modify(|_, w| w.btable().bits(0));
-            regs.cntr.modify(|_, w| w
-                .fres().clear_bit()
-                .resetm().set_bit()
-                .suspm().set_bit()
-                .wkupm().set_bit()
-                .ctrm().set_bit());
-            regs.istr.modify(|_, w| unsafe { w.bits(0) });
-
-            #[cfg(feature = "dp_pull_up_support")]
-            regs.bcdr.modify(|_, w| w.dppu().set_bit());
-        });*/
     }
 
     fn reset(&self) {

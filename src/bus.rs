@@ -160,9 +160,8 @@ impl<PINS: Send+Sync> usb_device::bus::UsbBus for UsbBus<PINS> {
         interrupt::free(|cs| {
             let regs = self.regs.borrow(cs);
 
-            let v = read_reg!(otg_fs_global, regs.global, FS_GINTSTS);
-            let (wakeup, suspend, enum_done, reset, oep, iep, rxflvl) = read_reg!(otg_fs_global, regs.global, FS_GINTSTS,
-                WKUPINT, USBSUSP, ENUMDNE, USBRST, OEPINT, IEPINT, RXFLVL
+            let (wakeup, suspend, enum_done, reset, iep, rxflvl) = read_reg!(otg_fs_global, regs.global, FS_GINTSTS,
+                WKUPINT, USBSUSP, ENUMDNE, USBRST, IEPINT, RXFLVL
             );
 
             if reset != 0 {
@@ -188,7 +187,7 @@ impl<PINS: Send+Sync> usb_device::bus::UsbBus for UsbBus<PINS> {
                 write_reg!(otg_fs_global, regs.global, FS_GINTSTS, USBSUSP: 1);
 
                 PollResult::Suspend
-            } else if (oep | iep | rxflvl) != 0 {
+            } else if (iep | rxflvl) != 0 {
                 // Flags are read-only, there is no need to clear them
 
                 self.endpoints.poll(iep != 0, rxflvl != 0)

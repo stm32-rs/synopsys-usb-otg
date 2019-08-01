@@ -191,4 +191,6 @@ impl<PINS: Send+Sync> usb_device::bus::UsbBus for UsbBus<PINS> {
             }
         })
     }
+
+    const QUIRK_SET_ADDRESS_BEFORE_STATUS: bool = true;
 }

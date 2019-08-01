@@ -294,11 +294,19 @@ impl DeviceEndpoints {
     }
 
     pub fn set_stalled(&self, ep_addr: EndpointAddress, stalled: bool) {
-        self.out_ep[ep_addr.index()].set_stalled(stalled)
+        if ep_addr.is_in() {
+            self.in_ep[ep_addr.index()].set_stalled(stalled)
+        } else {
+            self.out_ep[ep_addr.index()].set_stalled(stalled)
+        }
     }
 
     pub fn is_stalled(&self, ep_addr: EndpointAddress) -> bool {
-        self.out_ep[ep_addr.index()].is_stalled()
+        if ep_addr.is_in() {
+            self.in_ep[ep_addr.index()].is_stalled()
+        } else {
+            self.out_ep[ep_addr.index()].is_stalled()
+        }
     }
 
     pub fn configure_all(&self, cs: &CriticalSection) {

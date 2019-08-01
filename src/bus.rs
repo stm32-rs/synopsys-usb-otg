@@ -191,8 +191,7 @@ impl<PINS: Send+Sync> usb_device::bus::UsbBus for UsbBus<PINS> {
             } else if (oep | iep | rxflvl) != 0 {
                 // Flags are read-only, there is no need to clear them
 
-                panic!("data oep={}, iep={}, rxflvl={}", oep, iep, rxflvl);
-                self.endpoints.poll()
+                self.endpoints.poll(iep != 0, rxflvl != 0)
             } else {
                 PollResult::None
             }

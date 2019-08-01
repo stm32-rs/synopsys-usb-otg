@@ -257,31 +257,46 @@ impl DeviceEndpoints {
         self.out_ep[ep_addr.index()].read(buf)
     }
 
-    pub fn poll(&self) -> PollResult {
+    pub fn poll(&self, iep: bool, rxflvl: bool) -> PollResult {
         let mut ep_out = 0;
         let mut ep_in_complete = 0;
         let mut ep_setup = 0;
 
-        for ep in &self.in_ep {
-            if ep.is_initialized() {
-                let ep_regs = endpoint_in::instance(ep.address.index());
-                if read_reg!(endpoint_in, ep_regs, DIEPINT, XFRC) != 0 {
-                    write_reg!(endpoint_in, ep_regs, DIEPINT, XFRC: 1);
-                    ep_in_complete |= 1 << ep.address.index();
+        if rxflvl {
+            let global = unsafe { otg_fs_global::OTG_FS_GLOBAL::steal() };
+            let (epnum, status) = read_reg!(otg_fs_global, global, FS_GRXSTSR, EPNUM, PKTSTS);
+            match status {
+                0x02 => { // OUT received
+                    ep_out |= 1 << epnum;
+                }
+                0x06 => { // SETUP received
+                    // flushing TX if sonething stuck in control endpoint
+                    let ep = endpoint_in::instance(epnum as usize);
+                    if read_reg!(endpoint_in, ep, DIEPTSIZ, PKTCNT) != 0 {
+                        modify_reg!(otg_fs_global, global, FS_GRSTCTL, TXFNUM: epnum, TXFFLSH: 1);
+                        while read_reg!(otg_fs_global, global, FS_GRSTCTL, TXFFLSH) == 1 {}
+                    }
+                    ep_setup |= 1 << epnum;
+                }
+                0x03 | 0x04 => { // OUT completed | SETUP completed
+                    let ep = endpoint_out::instance(epnum as usize);
+                    modify_reg!(endpoint_out, ep, DOEPCTL, CNAK: 1, EPENA: 1);
+                    read_reg!(otg_fs_global, global, GRXSTSP); // pop GRXSTSP
+                }
+                _ => {
+                    read_reg!(otg_fs_global, global, GRXSTSP); // pop GRXSTSP
                 }
             }
         }
 
-        for ep in &self.out_ep {
-            if ep.is_initialized() {
-                let ep_regs = endpoint_out::instance(ep.address.index());
-                if read_reg!(endpoint_out, ep_regs, DOEPINT, XFRC) != 0 {
-                    write_reg!(endpoint_out, ep_regs, DOEPINT, XFRC: 1);
-                    ep_out |= 1 << ep.address.index();
-                }
-                if read_reg!(endpoint_out, ep_regs, DOEPINT, STUP) != 0 {
-                    write_reg!(endpoint_out, ep_regs, DOEPINT, STUP: 1);
-                    ep_setup |= 1 << ep.address.index();
+        if iep {
+            for ep in &self.in_ep {
+                if ep.is_initialized() {
+                    let ep_regs = endpoint_in::instance(ep.address.index());
+                    if read_reg!(endpoint_in, ep_regs, DIEPINT, XFRC) != 0 {
+                        write_reg!(endpoint_in, ep_regs, DIEPINT, XFRC: 1);
+                        ep_in_complete |= 1 << ep.address.index();
+                    }
                 }
             }
         }

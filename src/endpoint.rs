@@ -59,14 +59,6 @@ impl Endpoint {
         stall != 0
     }
 
-    pub fn ep_type(&self) -> Option<EndpointType> {
-        self.ep_type
-    }
-
-    pub fn set_ep_type(&mut self, ep_type: EndpointType) {
-        self.ep_type = Some(ep_type);
-    }
-
     pub fn configure(&self, _cs: &CriticalSection) {
         if self.address.index() == 0 {
             let mpsiz = match self.max_packet_size {

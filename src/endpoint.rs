@@ -1,8 +1,7 @@
 use cortex_m::interrupt::{self, Mutex, CriticalSection};
-use usb_device::{Result, UsbError, UsbDirection};
+use usb_device::{Result, UsbError};
 use usb_device::endpoint::{EndpointType, EndpointAddress};
 use crate::endpoint_memory::EndpointBuffer;
-use usb_device::bus::PollResult;
 use crate::ral::{endpoint_in, endpoint_out, endpoint0_out};
 use stm32ral::{read_reg, write_reg, modify_reg, otg_fs_global, otg_fs_device};
 use crate::target::{fifo_write, fifo_read};
@@ -10,9 +9,9 @@ use crate::target::{fifo_write, fifo_read};
 /// Arbitrates access to the endpoint-specific registers and packet buffer memory.
 pub struct Endpoint {
     buffer: Option<Mutex<EndpointBuffer>>,
-    ep_type: Option<EndpointType>,
-    max_packet_size: u16,
-    address: EndpointAddress,
+    pub(crate) ep_type: Option<EndpointType>,
+    pub(crate) max_packet_size: u16,
+    pub(crate) address: EndpointAddress,
 }
 
 impl Endpoint {
@@ -169,192 +168,5 @@ impl Endpoint {
         fifo_read(0usize, &mut buf[..count]);
 
         Ok(count)
-    }
-}
-
-
-pub struct DeviceEndpoints {
-    out_ep: [Endpoint; 4],
-    in_ep: [Endpoint; 4],
-}
-
-impl DeviceEndpoints {
-    pub fn new() -> Self {
-        let out_ep = [
-            Endpoint::new(EndpointAddress::from_parts(0, UsbDirection::Out)),
-            Endpoint::new(EndpointAddress::from_parts(1, UsbDirection::Out)),
-            Endpoint::new(EndpointAddress::from_parts(2, UsbDirection::Out)),
-            Endpoint::new(EndpointAddress::from_parts(3, UsbDirection::Out)),
-        ];
-        let in_ep = [
-            Endpoint::new(EndpointAddress::from_parts(0, UsbDirection::In)),
-            Endpoint::new(EndpointAddress::from_parts(1, UsbDirection::In)),
-            Endpoint::new(EndpointAddress::from_parts(2, UsbDirection::In)),
-            Endpoint::new(EndpointAddress::from_parts(3, UsbDirection::In)),
-        ];
-        Self {
-            out_ep,
-            in_ep,
-        }
-    }
-
-    fn find_free(
-        endpoints: &mut [Endpoint],
-        ep_addr: Option<EndpointAddress>
-    ) -> Result<&mut Endpoint>
-    {
-        if let Some(address) = ep_addr {
-            for ep in endpoints {
-                if ep.address == address {
-                    if !ep.is_initialized() {
-                        return Ok(ep);
-                    } else {
-                        return Err(UsbError::InvalidEndpoint);
-                    }
-                }
-            }
-            Err(UsbError::InvalidEndpoint)
-        } else {
-            for ep in &mut endpoints[1..] {
-                if !ep.is_initialized() {
-                    return Ok(ep)
-                }
-            }
-            Err(UsbError::EndpointOverflow)
-        }
-    }
-
-    pub fn alloc_ep(
-        &mut self,
-        ep_dir: UsbDirection,
-        ep_addr: Option<EndpointAddress>,
-        ep_type: EndpointType,
-        max_packet_size: u16,
-        _interval: u8) -> Result<EndpointAddress>
-    {
-        if ep_dir == UsbDirection::Out {
-            let ep = Self::find_free(&mut self.out_ep, ep_addr)?;
-            ep.ep_type = Some(ep_type);
-            ep.max_packet_size = max_packet_size;
-
-            // TODO: allocate buffers
-
-            Ok(ep.address)
-        } else {
-            let ep = Self::find_free(&mut self.in_ep, ep_addr)?;
-            ep.ep_type = Some(ep_type);
-            ep.max_packet_size = max_packet_size;
-
-            // TODO: allocate buffers
-
-            Ok(ep.address)
-        }
-    }
-
-    pub fn write_packet(&self, ep_addr: EndpointAddress, buf: &[u8]) -> Result<()> {
-        if !ep_addr.is_in() || ep_addr.index() >= 4 {
-            return Err(UsbError::InvalidEndpoint);
-        }
-
-        self.in_ep[ep_addr.index()].write(buf)
-    }
-
-    pub fn read_packet(&self, ep_addr: EndpointAddress, buf: &mut [u8]) -> Result<usize> {
-        if !ep_addr.is_out() || ep_addr.index() >= 4 {
-            return Err(UsbError::InvalidEndpoint);
-        }
-
-        self.out_ep[ep_addr.index()].read(buf)
-    }
-
-    pub fn poll(&self, iep: bool, rxflvl: bool) -> PollResult {
-        let mut ep_out = 0;
-        let mut ep_in_complete = 0;
-        let mut ep_setup = 0;
-
-        if rxflvl {
-            let global = unsafe { otg_fs_global::OTG_FS_GLOBAL::steal() };
-            let (epnum, status) = read_reg!(otg_fs_global, global, FS_GRXSTSR, EPNUM, PKTSTS);
-            match status {
-                0x02 => { // OUT received
-                    ep_out |= 1 << epnum;
-                }
-                0x06 => { // SETUP received
-                    // flushing TX if sonething stuck in control endpoint
-                    let ep = endpoint_in::instance(epnum as usize);
-                    if read_reg!(endpoint_in, ep, DIEPTSIZ, PKTCNT) != 0 {
-                        modify_reg!(otg_fs_global, global, FS_GRSTCTL, TXFNUM: epnum, TXFFLSH: 1);
-                        while read_reg!(otg_fs_global, global, FS_GRSTCTL, TXFFLSH) == 1 {}
-                    }
-                    ep_setup |= 1 << epnum;
-                }
-                0x03 | 0x04 => { // OUT completed | SETUP completed
-                    let ep = endpoint_out::instance(epnum as usize);
-                    modify_reg!(endpoint_out, ep, DOEPCTL, CNAK: 1, EPENA: 1);
-                    read_reg!(otg_fs_global, global, GRXSTSP); // pop GRXSTSP
-                }
-                _ => {
-                    read_reg!(otg_fs_global, global, GRXSTSP); // pop GRXSTSP
-                }
-            }
-        }
-
-        if iep {
-            for ep in &self.in_ep {
-                if ep.is_initialized() {
-                    let ep_regs = endpoint_in::instance(ep.address.index());
-                    if read_reg!(endpoint_in, ep_regs, DIEPINT, XFRC) != 0 {
-                        write_reg!(endpoint_in, ep_regs, DIEPINT, XFRC: 1);
-                        ep_in_complete |= 1 << ep.address.index();
-                    }
-                }
-            }
-        }
-
-        if (ep_in_complete | ep_out | ep_setup) != 0 {
-            PollResult::Data { ep_out, ep_in_complete, ep_setup }
-        } else {
-            PollResult::None
-        }
-    }
-
-    pub fn set_stalled(&self, ep_addr: EndpointAddress, stalled: bool) {
-        if ep_addr.is_in() {
-            self.in_ep[ep_addr.index()].set_stalled(stalled)
-        } else {
-            self.out_ep[ep_addr.index()].set_stalled(stalled)
-        }
-    }
-
-    pub fn is_stalled(&self, ep_addr: EndpointAddress) -> bool {
-        if ep_addr.is_in() {
-            self.in_ep[ep_addr.index()].is_stalled()
-        } else {
-            self.out_ep[ep_addr.index()].is_stalled()
-        }
-    }
-
-    pub fn configure_all(&self, cs: &CriticalSection) {
-        for ep in &self.in_ep {
-            if ep.is_initialized() {
-                ep.configure(cs);
-            }
-        }
-
-        for ep in &self.out_ep {
-            if ep.is_initialized() {
-                ep.configure(cs);
-            }
-        }
-    }
-
-    pub fn deconfigure_all(&self, cs: &CriticalSection) {
-        for ep in &self.in_ep {
-            ep.deconfigure(cs);
-        }
-
-        for ep in &self.out_ep {
-            ep.deconfigure(cs);
-        }
     }
 }

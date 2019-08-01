@@ -129,7 +129,7 @@ impl Endpoint {
 
     pub fn write(&self, buf: &[u8]) -> Result<()> {
         let ep = endpoint_in::instance(self.address.index());
-        if read_reg!(endpoint_in, ep, DIEPCTL, USBAEP) != 0 {
+        if read_reg!(endpoint_in, ep, DIEPCTL, USBAEP) == 0 {
             return Err(UsbError::InvalidEndpoint);
         }
         if read_reg!(endpoint_in, ep, DIEPTSIZ, PKTCNT) != 0 {
@@ -147,7 +147,7 @@ impl Endpoint {
 
     pub fn read(&self, buf: &mut [u8]) -> Result<usize> {
         let ep = endpoint_out::instance(self.address.index());
-        if read_reg!(endpoint_out, ep, DOEPCTL, USBAEP) != 0 {
+        if read_reg!(endpoint_out, ep, DOEPCTL, USBAEP) == 0 {
             return Err(UsbError::InvalidEndpoint);
         }
 

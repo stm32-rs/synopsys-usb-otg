@@ -1,4 +1,4 @@
-use cortex_m::interrupt::{self, Mutex, CriticalSection};
+use cortex_m::interrupt::{self, CriticalSection};
 use usb_device::{Result, UsbError};
 use usb_device::endpoint::{EndpointType, EndpointAddress};
 use crate::endpoint_memory::EndpointBuffer;
@@ -8,9 +8,9 @@ use crate::target::{fifo_write, fifo_read};
 
 /// Arbitrates access to the endpoint-specific registers and packet buffer memory.
 pub struct Endpoint {
-    buffer: Option<Mutex<EndpointBuffer>>,
-    pub(crate) ep_type: Option<EndpointType>,
-    pub(crate) max_packet_size: u16,
+    buffer: Option<EndpointBuffer>,
+    ep_type: Option<EndpointType>,
+    max_packet_size: u16,
     pub(crate) address: EndpointAddress,
 }
 
@@ -26,6 +26,12 @@ impl Endpoint {
 
     pub fn is_initialized(&self) -> bool {
         self.ep_type.is_some()
+    }
+
+    pub fn initialize(&mut self, ep_type: EndpointType, max_packet_size: u16, buffer: Option<EndpointBuffer>) {
+        self.ep_type = Some(ep_type);
+        self.max_packet_size = max_packet_size;
+        self.buffer = buffer;
     }
 
     pub fn set_stalled(&self, stalled: bool) {

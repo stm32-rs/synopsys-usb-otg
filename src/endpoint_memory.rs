@@ -78,6 +78,8 @@ impl EndpointBuffer {
     }
 }
 
+unsafe impl Sync for EndpointBuffer {}
+
 #[repr(C)]
 pub struct BufferDescriptor {
     pub addr_tx: VolatileCell<UsbAccessType>,

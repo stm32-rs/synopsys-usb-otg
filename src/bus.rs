@@ -17,7 +17,7 @@ pub struct UsbBus<PINS> {
     regs: Mutex<UsbRegisters>,
     endpoints_in: [Endpoint; 4],
     endpoints_out: [Endpoint; 4],
-    ep_allocator: EndpointMemoryAllocator,
+    endpoint_allocator: EndpointMemoryAllocator,
     pins: PhantomData<PINS>,
 }
 
@@ -40,7 +40,7 @@ impl<PINS: Send+Sync> UsbBus<PINS> {
         ];
         let bus = UsbBus {
             regs: Mutex::new(UsbRegisters::new(regs)),
-            ep_allocator: EndpointMemoryAllocator::new(ep_memory),
+            endpoint_allocator: EndpointMemoryAllocator::new(ep_memory),
             endpoints_in,
             endpoints_out,
             pins: PhantomData,
@@ -111,18 +111,14 @@ impl<PINS: Send+Sync> usb_device::bus::UsbBus for UsbBus<PINS> {
     {
         if ep_dir == UsbDirection::In {
             let ep = find_free_endpoint(&mut self.endpoints_in, ep_addr)?;
-            ep.ep_type = Some(ep_type);
-            ep.max_packet_size = max_packet_size;
-
-            // TODO: allocate buffers
+            ep.initialize(ep_type, max_packet_size, None);
 
             Ok(ep.address)
         } else {
             let ep = find_free_endpoint(&mut self.endpoints_out, ep_addr)?;
-            ep.ep_type = Some(ep_type);
-            ep.max_packet_size = max_packet_size;
 
-            // TODO: allocate buffers
+            let buffer = self.endpoint_allocator.allocate_rx_buffer(max_packet_size as usize)?;
+            ep.initialize(ep_type, max_packet_size, Some(buffer));
 
             Ok(ep.address)
         }

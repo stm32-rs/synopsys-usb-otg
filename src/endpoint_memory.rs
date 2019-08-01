@@ -4,82 +4,104 @@ use vcell::VolatileCell;
 use crate::target::fifo_read_into;
 use usb_device::{Result, UsbError};
 
-#[derive(Default)]
-pub struct EndpointBuffer(&'static mut [VolatileCell<u32>]);
+pub enum EndpointBufferState {
+    Empty,
+    DataOut,
+    DataSetup,
+}
+
+pub struct EndpointBuffer {
+    buffer: &'static mut [VolatileCell<u32>],
+    data_size: u16,
+    has_data: bool,
+    is_setup: bool,
+}
 
 impl EndpointBuffer {
     pub fn new(buffer: &'static mut [u32]) -> Self {
-        Self(unsafe { mem::transmute(buffer) })
+        Self {
+            buffer: unsafe { mem::transmute(buffer) },
+            data_size: 0,
+            has_data: false,
+            is_setup: false
+        }
     }
 
-    pub fn read_packet(&self, mut buf: &mut [u8]) -> Result<()> {
-        let data_size = if let Some(size) = self.data_size() {
-            size
-        } else {
+    pub fn read_packet(&mut self, mut buf: &mut [u8]) -> Result<usize> {
+        if !self.has_data {
             return Err(UsbError::WouldBlock)
-        };
+        }
+
+        let data_size = self.data_size as usize;
 
         if buf.len() < data_size {
             return Err(UsbError::BufferOverflow);
         }
 
-        let mut index = 1;
-        while data_size >= 4 {
-            let word = self.0[index].get();
+        let mut index = 0;
+        let mut current_size = data_size;
+        while current_size >= 4 {
+            let word = self.buffer[index].get();
             index += 1;
 
             let bytes = word.to_ne_bytes();
             buf[..4].copy_from_slice(&bytes);
             buf = &mut buf[4..];
+
+            current_size -= 4;
         }
-        if data_size > 0 {
-            let word = self.0[index].get();
+        if current_size > 0 {
+            let word = self.buffer[index].get();
             let bytes = word.to_ne_bytes();
-            buf[..data_size].copy_from_slice(&bytes[..data_size]);
+            buf[..current_size].copy_from_slice(&bytes[..current_size]);
         }
 
-        self.set_data_size(None);
+        self.has_data = false;
 
-        Ok(())
+        Ok(data_size)
     }
 
-    pub fn fill_from_fifo(&self, data_size: usize) -> Result<()> {
-        if self.data_size().is_some() {
+    pub fn fill_from_fifo(&mut self, data_size: u16, is_setup: bool) -> Result<()> {
+        if self.has_data {
             return Err(UsbError::WouldBlock);
         }
 
-        if data_size > self.capacity() {
+        if data_size as usize > self.capacity() {
             return Err(UsbError::BufferOverflow);
         }
 
-        let words = (data_size + 3) / 4;
-        fifo_read_into(&self.0[1..1 + words]);
+        let words = (data_size as usize + 3) / 4;
+        fifo_read_into(&self.buffer[..words]);
 
-        self.set_data_size(Some(data_size));
+        self.is_setup = is_setup;
+        self.data_size = data_size;
+        self.has_data = true;
 
         Ok(())
     }
 
-    fn set_data_size(&self, size: Option<usize>) {
-        let value = size.map(|size| 0x8000_0000 | (size as u32)).unwrap_or(0);
-        self.0[0].set(value);
-    }
-
-    pub fn data_size(&self) -> Option<usize> {
-        let v = self.0[0].get();
-        if v & 0x8000_0000 != 0 {
-            Some((v & 0x7fff_ffff) as usize)
+    pub fn state(&self) -> EndpointBufferState {
+        if self.has_data {
+            if self.is_setup {
+                EndpointBufferState::DataSetup
+            } else {
+                EndpointBufferState::DataOut
+            }
         } else {
-            None
+            EndpointBufferState::Empty
         }
     }
 
     pub fn capacity(&self) -> usize {
-        (self.0.len() - 1) * 4
+        self.buffer.len() * 4
     }
 }
 
-unsafe impl Sync for EndpointBuffer {}
+impl Default for EndpointBuffer {
+    fn default() -> Self {
+        EndpointBuffer::new(&mut [])
+    }
+}
 
 
 pub struct EndpointMemoryAllocator {

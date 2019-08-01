@@ -1,4 +1,4 @@
-use cortex_m::interrupt::{self, CriticalSection};
+use cortex_m::interrupt::{self, CriticalSection, Mutex};
 use usb_device::{Result, UsbError};
 use usb_device::endpoint::{EndpointType, EndpointAddress};
 use crate::endpoint_memory::EndpointBuffer;
@@ -6,6 +6,7 @@ use crate::ral::{endpoint_in, endpoint_out, endpoint0_out};
 use stm32ral::{read_reg, write_reg, modify_reg, otg_fs_global, otg_fs_device};
 use crate::target::{fifo_write, fifo_read};
 use core::ops::{Deref, DerefMut};
+use core::cell::RefCell;
 
 /// Arbitrates access to the endpoint-specific registers and packet buffer memory.
 pub struct Endpoint {
@@ -163,20 +164,23 @@ impl EndpointIn {
 
 pub struct EndpointOut {
     common: Endpoint,
-    buffer: EndpointBuffer,
+    buffer: Mutex<RefCell<EndpointBuffer>>,
 }
 
 impl EndpointOut {
     pub fn new(address: EndpointAddress) -> EndpointOut {
         EndpointOut {
             common: Endpoint::new(address),
-            buffer: EndpointBuffer::default(),
+            buffer: Mutex::new(RefCell::new(EndpointBuffer::default())),
         }
     }
 
     pub fn initialize(&mut self, ep_type: EndpointType, max_packet_size: u16, buffer: EndpointBuffer) {
         Endpoint::initialize(self, ep_type, max_packet_size);
-        self.buffer = buffer;
+
+        interrupt::free(|cs| {
+            self.buffer.borrow(cs).replace(buffer);
+        });
     }
 
     pub fn read(&self, buf: &mut [u8]) -> Result<usize> {

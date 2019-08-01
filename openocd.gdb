@@ -18,7 +18,7 @@ break HardFault
 #break main
 
 load
+continue
 # monitor verify
 # monitor reset
-# quit
-continue
+quit

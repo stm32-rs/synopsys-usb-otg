@@ -4,7 +4,7 @@ use usb_device::endpoint::{EndpointType, EndpointAddress};
 use crate::endpoint_memory::EndpointBuffer;
 use usb_device::bus::PollResult;
 use crate::ral::{endpoint_in, endpoint_out, endpoint0_out};
-use stm32ral::{read_reg, write_reg, modify_reg, otg_fs_global};
+use stm32ral::{read_reg, write_reg, modify_reg, otg_fs_global, otg_fs_device};
 use crate::target::{fifo_write, fifo_read};
 
 /// Arbitrates access to the endpoint-specific registers and packet buffer memory.
@@ -93,6 +93,44 @@ impl Endpoint {
 
         } else {
             unimplemented!()
+        }
+    }
+
+    pub fn deconfigure(&self, _cs: &CriticalSection) {
+        // disable interrupt
+        let device = unsafe { otg_fs_device::OTG_FS_DEVICE::steal() };
+        modify_reg!(otg_fs_device, device, DAINTMSK, IEPM: 0, OEPM: 0); // TODO
+
+        if self.address.is_in() {
+            let regs = endpoint_in::instance(self.address.index());
+
+            // deactivating endpoint
+            modify_reg!(endpoint_in, regs, DIEPCTL, USBAEP: 0);
+
+            // TODO: flushing FIFO
+
+            // disabling endpoint
+            if read_reg!(endpoint_in, regs, DIEPCTL, EPENA) != 0 && self.address.index() != 0 {
+                modify_reg!(endpoint_in, regs, DIEPCTL, EPDIS: 1)
+            }
+
+            // clean EP interrupts
+            write_reg!(endpoint_in, regs, DIEPINT, 0xff);
+
+            // TODO: deconfiguring TX FIFO
+        } else {
+            let regs = endpoint_out::instance(self.address.index());
+
+            // deactivating endpoint
+            modify_reg!(endpoint_out, regs, DOEPCTL, USBAEP: 0);
+
+            // disabling endpoint
+            if read_reg!(endpoint_out, regs, DOEPCTL, EPENA) != 0 && self.address.index() != 0 {
+                modify_reg!(endpoint_out, regs, DOEPCTL, EPDIS: 1)
+            }
+
+            // clean EP interrupts
+            write_reg!(endpoint_out, regs, DOEPINT, 0xff);
         }
     }
 
@@ -281,6 +319,16 @@ impl DeviceEndpoints {
             if ep.is_initialized() {
                 ep.configure(cs);
             }
+        }
+    }
+
+    pub fn deconfigure_all(&self, cs: &CriticalSection) {
+        for ep in &self.in_ep {
+            ep.deconfigure(cs);
+        }
+
+        for ep in &self.out_ep {
+            ep.deconfigure(cs);
         }
     }
 }

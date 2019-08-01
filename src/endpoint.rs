@@ -30,7 +30,10 @@ impl Endpoint {
     }
 
     pub fn set_stalled(&self, stalled: bool) {
-        interrupt::free(|cs| {
+        if !self.is_initialized() {
+            return;
+        }
+        interrupt::free(|_| {
             if self.is_stalled() == stalled {
                 return
             }

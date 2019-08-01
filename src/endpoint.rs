@@ -69,23 +69,21 @@ impl Endpoint {
                 other => panic!("Unsupported EP0 size: {}", other),
             };
 
+            // enabling RX and TX interrupts from EP0
+            let device = unsafe { otg_fs_device::OTG_FS_DEVICE::steal() };
+            modify_reg!(otg_fs_device, device, DAINTMSK, |v| v | 0x00010001);
+
             if self.address.is_in() {
                 let regs = endpoint_in::instance(self.address.index());
-                write_reg!(endpoint_in, regs, DIEPCTL, MPSIZ: mpsiz as u32);
+
+                write_reg!(endpoint_in, regs, DIEPCTL, MPSIZ: mpsiz as u32, SNAK: 1);
+
                 write_reg!(endpoint_in, regs, DIEPTSIZ, PKTCNT: 0, XFRSIZ: self.max_packet_size as u32);
-                modify_reg!(endpoint_in, regs, DIEPCTL, EPENA: 1, SNAK: 1);
             } else {
                 let regs = endpoint0_out::instance();
                 write_reg!(endpoint0_out, regs, DOEPTSIZ0, STUPCNT: 1, PKTCNT: 1, XFRSIZ: self.max_packet_size as u32);
-                modify_reg!(endpoint0_out, regs, DOEPCTL0, EPENA: 1, SNAK: 1);
+                modify_reg!(endpoint0_out, regs, DOEPCTL0, MPSIZ: mpsiz as u32, EPENA: 1, CNAK: 1);
             }
-
-            let global = unsafe { otg_fs_global::OTG_FS_GLOBAL::steal() };
-            write_reg!(otg_fs_global, global, FS_GNPTXFSIZ,
-                TX0FD: (self.max_packet_size as u32) >> 2,
-                TX0FSA: 0x200
-            );
-
         } else {
             unimplemented!()
         }

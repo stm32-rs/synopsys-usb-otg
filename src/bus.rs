@@ -4,7 +4,6 @@ use usb_device::bus::{UsbBusAllocator, PollResult};
 use usb_device::endpoint::{EndpointType, EndpointAddress};
 use cortex_m::interrupt::{self, Mutex};
 use stm32ral::{read_reg, write_reg, modify_reg, otg_fs_global, otg_fs_device, otg_fs_pwrclk};
-use crate::sprintln;
 
 use crate::target::{USB, apb_usb_enable, UsbRegisters, UsbPins};
 use crate::endpoint::DeviceEndpoints;
@@ -48,15 +47,11 @@ impl<PINS: Send+Sync> usb_device::bus::UsbBus for UsbBus<PINS> {
     }
 
     fn enable(&mut self) {
-        //sprintln!("enable()");
-
         // Enable USB_OTG in RCC
         apb_usb_enable();
 
         interrupt::free(|cs| {
             let regs = self.regs.borrow(cs);
-
-            //modify_reg!(otg_fs_global, regs.global, FS_GUSBCFG, PHYSEL: 1);
 
             // Wait for AHB ready
             while read_reg!(otg_fs_global, regs.global, FS_GRSTCTL, AHBIDL) == 0 {}

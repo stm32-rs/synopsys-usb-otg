@@ -32,7 +32,6 @@ fn main() -> ! {
 
     let gpioa = dp.GPIOA.split();
 
-    // 100MHz GPIO speed
     let usb_dm = gpioa.pa11.into_alternate_af10();
     let usb_dp = gpioa.pa12.into_alternate_af10();
 

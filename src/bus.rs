@@ -118,25 +118,10 @@ impl<PINS: Send+Sync> usb_device::bus::UsbBus for UsbBus<PINS> {
         interrupt::free(|cs| {
             let regs = self.regs.borrow(cs);
 
-            // Flush all tx/rx fifos
-            write_reg!(otg_fs_global, regs.global, FS_GRSTCTL,
-                TXFFLSH: 1,
-                RXFFLSH: 1,
-                TXFNUM: 0b10000 // all
-            );
-
             self.endpoints.configure_all(cs);
+
+            modify_reg!(otg_fs_device, regs.device, FS_DCFG, DAD: 0);
         });
-//        interrupt::free(|cs| {
-//            let regs = self.regs.borrow(cs);
-//
-//            regs.istr.modify(|_, w| unsafe { w.bits(0) });
-//            regs.daddr.modify(|_, w| w.ef().set_bit().add().bits(0));
-//
-//            for ep in self.endpoints.iter() {
-//                ep.configure(cs);
-//            }
-//        });
     }
 
     fn set_device_address(&self, addr: u8) {

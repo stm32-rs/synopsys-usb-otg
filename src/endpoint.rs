@@ -152,9 +152,19 @@ impl Endpoint {
         }
 
         let global = unsafe { otg_fs_global::OTG_FS_GLOBAL::steal() };
-        let count = read_reg!(otg_fs_global, global, GRXSTSP, BCNT) as usize;
 
-        assert!(count <= buf.len());
+        let epnum = read_reg!(otg_fs_global, global, FS_GRXSTSR, EPNUM) as usize;
+        if epnum != self.address.index() {
+            return Err(UsbError::WouldBlock);
+        }
+
+        let count = read_reg!(otg_fs_global, global, FS_GRXSTSR, BCNT) as usize;
+        if count > buf.len() {
+            return Err(UsbError::BufferOverflow);
+        }
+
+        // pop GRXSTSP
+        read_reg!(otg_fs_global, global, GRXSTSP);
 
         fifo_read(0usize, &mut buf[..count]);
 

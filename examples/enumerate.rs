@@ -47,7 +47,6 @@ fn main() -> ! {
 
     loop {
         if usb_dev.poll(&mut []) {
-            panic!("poll ok");
         }
     }
 }

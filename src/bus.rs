@@ -175,28 +175,49 @@ impl<PINS: Send+Sync> usb_device::bus::UsbBus for UsbBus<PINS> {
         interrupt::free(|cs| {
             let regs = self.regs.borrow(cs);
 
-            let (wkup, susp, reset, oep, iep) = read_reg!(otg_fs_global, regs.global, FS_GINTSTS,
-                WKUPINT, USBSUSP, USBRST, OEPINT, IEPINT
+            let v = read_reg!(otg_fs_global, regs.global, FS_GINTSTS);
+            let (wakeup, suspend, enum_done, reset, oep, iep, rxflvl) = read_reg!(otg_fs_global, regs.global, FS_GINTSTS,
+                WKUPINT, USBSUSP, ENUMDNE, USBRST, OEPINT, IEPINT, RXFLVL
             );
 
-            if wkup != 0 {
+            if reset != 0 {
+                //sprintln!("reset int");
+                write_reg!(otg_fs_global, regs.global, FS_GINTSTS, USBRST: 1);
+
+                self.endpoints.deconfigure_all(cs);
+
+                // Flush RX
+                modify_reg!(otg_fs_global, regs.global, FS_GRSTCTL, RXFFLSH: 1);
+                while read_reg!(otg_fs_global, regs.global, FS_GRSTCTL, RXFFLSH) == 1 {}
+            }
+
+            let r = if enum_done != 0 {
+                //sprintln!("enum done int");
+                write_reg!(otg_fs_global, regs.global, FS_GINTSTS, ENUMDNE: 1);
+
+                PollResult::Reset
+            } else if wakeup != 0 {
                 // Clear the interrupt
                 write_reg!(otg_fs_global, regs.global, FS_GINTSTS, WKUPINT: 1);
 
                 PollResult::Resume
-            } else if reset != 0 {
-                write_reg!(otg_fs_global, regs.global, FS_GINTSTS, USBRST: 1);
-
-                PollResult::Reset
-            } else if susp != 0 {
+            } else if suspend != 0 {
                 write_reg!(otg_fs_global, regs.global, FS_GINTSTS, USBSUSP: 1);
 
                 PollResult::Suspend
-            } else if (oep | iep) != 0 {
+            } else if (oep | iep | rxflvl) != 0 {
+                // Flags are read-only, there is no need to clear them
+
+                panic!("data oep={}, iep={}, rxflvl={}", oep, iep, rxflvl);
                 self.endpoints.poll()
             } else {
                 PollResult::None
+            };
+            let v2 = read_reg!(otg_fs_global, regs.global, FS_GINTSTS);
+            if r != PollResult::None {
+                //sprintln!("poll result: {:?} {:08x}->{:08x}", r, v, v2);
             }
+            r
         })
     }
 }

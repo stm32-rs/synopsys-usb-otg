@@ -4,6 +4,7 @@ use vcell::VolatileCell;
 use crate::target::{UsbAccessType, fifo_read_into};
 use usb_device::{Result, UsbError};
 
+#[derive(Default)]
 pub struct EndpointBuffer(&'static mut [VolatileCell<u32>]);
 
 impl EndpointBuffer {

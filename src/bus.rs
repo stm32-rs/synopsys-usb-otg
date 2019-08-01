@@ -6,8 +6,9 @@ use cortex_m::interrupt::{self, Mutex, CriticalSection};
 use stm32ral::{read_reg, write_reg, modify_reg, otg_fs_global, otg_fs_device, otg_fs_pwrclk};
 
 use crate::target::{USB, apb_usb_enable, UsbRegisters, UsbPins};
-use crate::endpoint::Endpoint;
+use crate::endpoint::{EndpointIn, EndpointOut, Endpoint};
 use crate::endpoint_memory::EndpointMemoryAllocator;
+use core::ops::Deref;
 
 const RX_FIFO_SIZE: u32 = 32;
 
@@ -15,8 +16,8 @@ const RX_FIFO_SIZE: u32 = 32;
 /// USB peripheral driver for STM32 microcontrollers.
 pub struct UsbBus<PINS> {
     regs: Mutex<UsbRegisters>,
-    endpoints_in: [Endpoint; 4],
-    endpoints_out: [Endpoint; 4],
+    endpoints_in: [EndpointIn; 4],
+    endpoints_out: [EndpointOut; 4],
     endpoint_allocator: EndpointMemoryAllocator,
     pins: PhantomData<PINS>,
 }
@@ -27,16 +28,16 @@ impl<PINS: Send+Sync> UsbBus<PINS> {
         where PINS: UsbPins
     {
         let endpoints_in = [
-            Endpoint::new(EndpointAddress::from_parts(0, UsbDirection::In)),
-            Endpoint::new(EndpointAddress::from_parts(1, UsbDirection::In)),
-            Endpoint::new(EndpointAddress::from_parts(2, UsbDirection::In)),
-            Endpoint::new(EndpointAddress::from_parts(3, UsbDirection::In)),
+            EndpointIn::new(EndpointAddress::from_parts(0, UsbDirection::In)),
+            EndpointIn::new(EndpointAddress::from_parts(1, UsbDirection::In)),
+            EndpointIn::new(EndpointAddress::from_parts(2, UsbDirection::In)),
+            EndpointIn::new(EndpointAddress::from_parts(3, UsbDirection::In)),
         ];
         let endpoints_out = [
-            Endpoint::new(EndpointAddress::from_parts(0, UsbDirection::Out)),
-            Endpoint::new(EndpointAddress::from_parts(1, UsbDirection::Out)),
-            Endpoint::new(EndpointAddress::from_parts(2, UsbDirection::Out)),
-            Endpoint::new(EndpointAddress::from_parts(3, UsbDirection::Out)),
+            EndpointOut::new(EndpointAddress::from_parts(0, UsbDirection::Out)),
+            EndpointOut::new(EndpointAddress::from_parts(1, UsbDirection::Out)),
+            EndpointOut::new(EndpointAddress::from_parts(2, UsbDirection::Out)),
+            EndpointOut::new(EndpointAddress::from_parts(3, UsbDirection::Out)),
         ];
         let bus = UsbBus {
             regs: Mutex::new(UsbRegisters::new(regs)),
@@ -74,10 +75,10 @@ impl<PINS: Send+Sync> UsbBus<PINS> {
     }
 }
 
-fn find_free_endpoint(
-    endpoints: &mut [Endpoint],
+fn find_free_endpoint<EP: Deref<Target=Endpoint>>(
+    endpoints: &mut [EP],
     ep_addr: Option<EndpointAddress>
-) -> Result<&mut Endpoint>
+) -> Result<&mut EP>
 {
     if let Some(address) = ep_addr {
         for ep in endpoints {
@@ -111,14 +112,14 @@ impl<PINS: Send+Sync> usb_device::bus::UsbBus for UsbBus<PINS> {
     {
         if ep_dir == UsbDirection::In {
             let ep = find_free_endpoint(&mut self.endpoints_in, ep_addr)?;
-            ep.initialize(ep_type, max_packet_size, None);
+            ep.initialize(ep_type, max_packet_size);
 
             Ok(ep.address)
         } else {
             let ep = find_free_endpoint(&mut self.endpoints_out, ep_addr)?;
 
             let buffer = self.endpoint_allocator.allocate_rx_buffer(max_packet_size as usize)?;
-            ep.initialize(ep_type, max_packet_size, Some(buffer));
+            ep.initialize(ep_type, max_packet_size, buffer);
 
             Ok(ep.address)
         }

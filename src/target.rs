@@ -2,6 +2,8 @@
 #![allow(unused_imports)]
 //! Target-specific definitions
 
+use vcell::VolatileCell;
+
 // Export HAL
 pub use stm32f4xx_hal as hal;
 
@@ -110,6 +112,15 @@ pub fn fifo_read(mut buf: &mut [u8]) {
         let word = fifo.get();
         let bytes = word.to_ne_bytes();
         buf.copy_from_slice(&bytes[..buf.len()]);
+    }
+}
+
+pub fn fifo_read_into(buf: &[VolatileCell<u32>]) {
+    let fifo = fifo_ptr(0);
+
+    for p in buf {
+        let word = fifo.get();
+        p.set(word);
     }
 }
 

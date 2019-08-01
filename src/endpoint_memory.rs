@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use core::{slice, mem};
 use vcell::VolatileCell;
-use crate::target::UsbAccessType;
+use crate::target::{UsbAccessType, fifo_read_into};
 use usb_device::{Result, UsbError};
 
 pub struct EndpointBuffer(&'static mut [VolatileCell<u32>]);
@@ -11,53 +11,70 @@ impl EndpointBuffer {
         Self(unsafe { mem::transmute(buffer) })
     }
 
-    #[inline(always)]
-    fn read_word(&self, index: usize) -> u16 {
-        (self.0[index].get() & 0xffff) as u16
-    }
+    pub fn read_packet(&self, mut buf: &mut [u8]) -> Result<()> {
+        let data_size = if let Some(size) = self.data_size() {
+            size
+        } else {
+            return Err(UsbError::WouldBlock)
+        };
 
-    #[inline(always)]
-    fn write_word(&self, index: usize, value: u16) {
-        self.0[index].set(value as UsbAccessType);
-    }
+        if buf.len() < data_size {
+            return Err(UsbError::BufferOverflow);
+        }
 
-    pub fn read(&self, mut buf: &mut [u8]) {
-        let mut index = 0;
-
-        while buf.len() >= 2 {
-            let word = self.read_word(index);
-
-            buf[0] = (word & 0xff) as u8;
-            buf[1] = (word >> 8) as u8;
-
+        let mut index = 1;
+        while data_size >= 4 {
+            let word = self.0[index].get();
             index += 1;
 
-            buf = &mut buf[2..];
+            let bytes = word.to_ne_bytes();
+            buf[..4].copy_from_slice(&bytes);
+            buf = &mut buf[4..];
+        }
+        if data_size > 0 {
+            let word = self.0[index].get();
+            let bytes = word.to_ne_bytes();
+            buf[..data_size].copy_from_slice(&bytes[..data_size]);
         }
 
-        if buf.len() > 0 {
-            buf[0] = (self.read_word(index) & 0xff) as u8;
-        }
+        self.set_data_size(None);
+
+        Ok(())
     }
 
-    pub fn write(&self, mut buf: &[u8]) {
-        let mut index = 0;
-
-        while buf.len() >= 2 {
-            let value: u16 = buf[0] as u16 | ((buf[1] as u16) << 8);
-            self.write_word(index, value);
-            index += 1;
-
-            buf = &buf[2..];
+    pub fn fill_from_fifo(&self, data_size: usize) -> Result<()> {
+        if self.data_size().is_some() {
+            return Err(UsbError::WouldBlock);
         }
 
-        if buf.len() > 0 {
-            self.write_word(index, buf[0] as u16);
+        if data_size > self.capacity() {
+            return Err(UsbError::BufferOverflow);
+        }
+
+        let words = (data_size + 3) / 4;
+        fifo_read_into(&self.0[1..1 + words]);
+
+        self.set_data_size(Some(data_size));
+
+        Ok(())
+    }
+
+    fn set_data_size(&self, size: Option<usize>) {
+        let value = size.map(|size| 0x8000_0000 | (size as u32)).unwrap_or(0);
+        self.0[0].set(value);
+    }
+
+    pub fn data_size(&self) -> Option<usize> {
+        let v = self.0[0].get();
+        if v & 0x8000_0000 != 0 {
+            Some((v & 0x7fff_ffff) as usize)
+        } else {
+            None
         }
     }
 
     pub fn capacity(&self) -> usize {
-        self.0.len() << 1
+        (self.0.len() - 1) * 4
     }
 }
 
@@ -82,9 +99,7 @@ impl EndpointMemoryAllocator {
         }
     }
 
-    pub fn allocate_buffer(&mut self, size: usize) -> Result<EndpointBuffer> {
-        assert!(size < 1024);
-
+    pub fn allocate_rx_buffer(&mut self, size: usize) -> Result<EndpointBuffer> {
         let size_words = (size + 3) / 4;
 
         let offset = self.next_free_offset;
@@ -99,5 +114,9 @@ impl EndpointMemoryAllocator {
             slice::from_raw_parts_mut(ptr, size_words)
         };
         Ok(EndpointBuffer::new(buffer))
+    }
+
+    pub fn total_rx_buffer_size(&self) -> usize {
+        self.next_free_offset
     }
 }

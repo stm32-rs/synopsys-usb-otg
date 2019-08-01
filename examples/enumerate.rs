@@ -35,7 +35,7 @@ fn main() -> ! {
     let usb_dm = gpioa.pa11.into_alternate_af10();
     let usb_dp = gpioa.pa12.into_alternate_af10();
 
-    let usb_bus = UsbBus::new(dp.OTG_FS_GLOBAL, (usb_dm, usb_dp), unsafe { &mut EP_MEMORY });
+    let usb_bus = UsbBus::new((dp.OTG_FS_GLOBAL, dp.OTG_FS_DEVICE, dp.OTG_FS_PWRCLK), (usb_dm, usb_dp), unsafe { &mut EP_MEMORY });
 
     let mut usb_dev = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0x5824, 0x27dd))
         .manufacturer("Fake company")

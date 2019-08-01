@@ -12,7 +12,7 @@ use core::cell::RefCell;
 pub struct Endpoint {
     ep_type: Option<EndpointType>,
     max_packet_size: u16,
-    pub(crate) address: EndpointAddress,
+    address: EndpointAddress,
 }
 
 impl Endpoint {
@@ -22,6 +22,11 @@ impl Endpoint {
             max_packet_size: 0,
             address,
         }
+    }
+
+    #[inline(always)]
+    pub fn address(&self) -> EndpointAddress {
+        self.address
     }
 
     pub fn is_initialized(&self) -> bool {

@@ -82,7 +82,7 @@ fn find_free_endpoint<EP: Deref<Target=Endpoint>>(
 {
     if let Some(address) = ep_addr {
         for ep in endpoints {
-            if ep.address == address {
+            if ep.address() == address {
                 if !ep.is_initialized() {
                     return Ok(ep);
                 } else {
@@ -114,14 +114,14 @@ impl<PINS: Send+Sync> usb_device::bus::UsbBus for UsbBus<PINS> {
             let ep = find_free_endpoint(&mut self.endpoints_in, ep_addr)?;
             ep.initialize(ep_type, max_packet_size);
 
-            Ok(ep.address)
+            Ok(ep.address())
         } else {
             let ep = find_free_endpoint(&mut self.endpoints_out, ep_addr)?;
 
             let buffer = self.endpoint_allocator.allocate_rx_buffer(max_packet_size as usize)?;
             ep.initialize(ep_type, max_packet_size, buffer);
 
-            Ok(ep.address)
+            Ok(ep.address())
         }
     }
 
@@ -323,10 +323,10 @@ impl<PINS: Send+Sync> usb_device::bus::UsbBus for UsbBus<PINS> {
                 if iep != 0 {
                     for ep in &self.endpoints_in {
                         if ep.is_initialized() {
-                            let ep_regs = endpoint_in::instance(ep.address.index());
+                            let ep_regs = endpoint_in::instance(ep.address().index());
                             if read_reg!(endpoint_in, ep_regs, DIEPINT, XFRC) != 0 {
                                 write_reg!(endpoint_in, ep_regs, DIEPINT, XFRC: 1);
-                                ep_in_complete |= 1 << ep.address.index();
+                                ep_in_complete |= 1 << ep.address().index();
                             }
                         }
                     }

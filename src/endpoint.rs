@@ -69,6 +69,8 @@ impl Endpoint {
     }
 
     pub fn configure(&self, _cs: &CriticalSection) {
+        let device = unsafe { otg_fs_device::OTG_FS_DEVICE::steal() };
+
         if self.address.index() == 0 {
             let mpsiz = match self.max_packet_size {
                 8 => 0b11,
@@ -79,7 +81,6 @@ impl Endpoint {
             };
 
             // enabling RX and TX interrupts from EP0
-            let device = unsafe { otg_fs_device::OTG_FS_DEVICE::steal() };
             modify_reg!(otg_fs_device, device, DAINTMSK, |v| v | 0x00010001);
 
             if self.address.is_in() {
@@ -94,7 +95,30 @@ impl Endpoint {
                 modify_reg!(endpoint0_out, regs, DOEPCTL0, MPSIZ: mpsiz as u32, EPENA: 1, CNAK: 1);
             }
         } else {
-            unimplemented!()
+            if self.address.is_in() {
+                // enabling EP TX interrupt
+                modify_reg!(otg_fs_device, device, DAINTMSK, |v| v | (0x0001 << self.address.index()));
+
+                let regs = endpoint_in::instance(self.address.index());
+                write_reg!(endpoint_in, regs, DIEPCTL,
+                    SNAK: 1,
+                    USBAEP: 1,
+                    EPTYP: self.ep_type.unwrap() as u32,
+                    SD0PID_SEVNFRM: 1,
+                    TXFNUM: self.address.index() as u32,
+                    MPSIZ: self.max_packet_size as u32
+                );
+            } else {
+                let regs = endpoint_out::instance(self.address.index());
+                write_reg!(endpoint_out, regs, DOEPCTL,
+                    SD0PID_SEVNFRM: 1,
+                    CNAK: 1,
+                    EPENA: 1,
+                    USBAEP: 1,
+                    EPTYP: self.ep_type.unwrap() as u32,
+                    MPSIZ: self.max_packet_size as u32
+                );
+            }
         }
     }
 

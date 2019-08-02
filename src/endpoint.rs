@@ -158,6 +158,10 @@ impl EndpointIn {
             return Err(UsbError::WouldBlock);
         }
 
+        if buf.len() > self.max_packet_size as usize {
+            return Err(UsbError::BufferOverflow);
+        }
+
         write_reg!(endpoint_in, ep, DIEPTSIZ, PKTCNT: 1, XFRSIZ: buf.len() as u32);
         modify_reg!(endpoint_in, ep, DIEPCTL, CNAK: 1, EPENA: 1);
 

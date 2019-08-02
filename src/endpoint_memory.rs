@@ -107,6 +107,7 @@ impl Default for EndpointBuffer {
 
 pub struct EndpointMemoryAllocator {
     next_free_offset: usize,
+    max_size_words: usize,
     memory: &'static mut [u32],
 }
 
@@ -114,6 +115,7 @@ impl EndpointMemoryAllocator {
     pub fn new(memory: &'static mut [u32]) -> Self {
         Self {
             next_free_offset: 0,
+            max_size_words: 0,
             memory
         }
     }
@@ -127,6 +129,7 @@ impl EndpointMemoryAllocator {
         }
 
         self.next_free_offset += size_words;
+        self.max_size_words = core::cmp::max(self.max_size_words, size_words);
 
         let buffer = unsafe {
             let ptr = self.memory.as_mut_ptr().offset(offset as isize);
@@ -135,7 +138,12 @@ impl EndpointMemoryAllocator {
         Ok(EndpointBuffer::new(buffer))
     }
 
-    pub fn total_rx_buffer_size(&self) -> usize {
+    /// Returns the size of memory allocated for OUT endpoints in words
+    pub fn total_rx_buffer_size_words(&self) -> usize {
         self.next_free_offset
+    }
+
+    pub fn max_buffer_size_words(&self) -> usize {
+        self.max_size_words
     }
 }

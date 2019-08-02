@@ -60,6 +60,7 @@ pub fn init_device(global: &otg_fs_global::Instance, device: &otg_fs_device::Ins
 pub const OTG_FS_BASE: usize = 0x5000_0000;
 pub const FIFO_OFFSET: usize = 0x1000;
 pub const FIFO_SIZE: usize = 0x1000;
+pub const FIFO_DEPTH_WORDS: u32 = 320;
 
 
 pub const NUM_ENDPOINTS: usize = 8;

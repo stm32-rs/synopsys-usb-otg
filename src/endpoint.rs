@@ -165,6 +165,14 @@ impl EndpointIn {
 
         Ok(())
     }
+
+    pub fn fifo_size_words(&self) -> u32 {
+        if self.is_initialized() {
+            (self.max_packet_size as u32 + 3) / 4
+        } else {
+            0
+        }
+    }
 }
 
 pub struct EndpointOut {

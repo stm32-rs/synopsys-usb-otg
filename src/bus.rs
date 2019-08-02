@@ -5,13 +5,11 @@ use usb_device::endpoint::{EndpointType, EndpointAddress};
 use cortex_m::interrupt::{self, Mutex, CriticalSection};
 use stm32ral::{read_reg, write_reg, modify_reg, otg_fs_global, otg_fs_device, otg_fs_pwrclk};
 
-use crate::target::{OTG_FS_GLOBAL, OTG_FS_DEVICE, OTG_FS_PWRCLK, apb_usb_enable, UsbRegisters, UsbPins};
+use crate::target::{OTG_FS_GLOBAL, OTG_FS_DEVICE, OTG_FS_PWRCLK, apb_usb_enable, UsbRegisters, UsbPins, FIFO_DEPTH_WORDS};
 use crate::endpoint::{EndpointIn, EndpointOut, Endpoint};
 use crate::endpoint_memory::{EndpointMemoryAllocator, EndpointBufferState};
 use core::ops::Deref;
-
-const RX_FIFO_SIZE: u32 = 32;
-
+use core::cmp;
 
 /// USB peripheral driver for STM32 microcontrollers.
 pub struct UsbBus<PINS> {
@@ -51,6 +49,51 @@ impl<PINS: Send+Sync> UsbBus<PINS> {
     }
 
     pub fn configure_all(&self, cs: &CriticalSection) {
+        let regs = self.regs.borrow(cs);
+
+        // Rx FIFO
+        let rx_fifo_size = self.endpoint_allocator.total_rx_buffer_size_words() as u32 + 20;
+        write_reg!(otg_fs_global, regs.global, FS_GRXFSIZ, rx_fifo_size);
+        let mut fifo_top = rx_fifo_size;
+
+        // Tx FIFO #0
+        let fifo_size = cmp::max(self.endpoints_in[0].fifo_size_words(), 16);
+        write_reg!(otg_fs_global, regs.global, FS_GNPTXFSIZ,
+            TX0FD: fifo_size,
+            TX0FSA: fifo_top
+        );
+        fifo_top += fifo_size;
+
+        // Tx FIFO #1
+        let fifo_size = cmp::max(self.endpoints_in[1].fifo_size_words(), 16);
+        write_reg!(otg_fs_global, regs.global, FS_DIEPTXF1,
+            INEPTXFD: fifo_size,
+            INEPTXSA: fifo_top
+        );
+        fifo_top += fifo_size;
+
+        // Tx FIFO #2
+        let fifo_size = cmp::max(self.endpoints_in[2].fifo_size_words(), 16);
+        write_reg!(otg_fs_global, regs.global, FS_DIEPTXF2,
+            INEPTXFD: fifo_size,
+            INEPTXSA: fifo_top
+        );
+        fifo_top += fifo_size;
+
+        // Tx FIFO #3
+        let fifo_size = cmp::max(self.endpoints_in[3].fifo_size_words(), 16);
+        write_reg!(otg_fs_global, regs.global, FS_DIEPTXF3,
+            INEPTXFD: fifo_size,
+            INEPTXSA: fifo_top
+        );
+        fifo_top += fifo_size;
+
+        assert!(fifo_top <= FIFO_DEPTH_WORDS);
+
+        // Flush Rx & Tx FIFOs
+        modify_reg!(otg_fs_global, regs.global, FS_GRSTCTL, RXFFLSH: 1, TXFFLSH: 1, TXFNUM: 0x10);
+        while read_reg!(otg_fs_global, regs.global, FS_GRSTCTL, RXFFLSH, TXFFLSH) != (0, 0) {}
+
         for ep in &self.endpoints_in {
             if ep.is_initialized() {
                 ep.configure(cs);
@@ -155,15 +198,6 @@ impl<PINS: Send+Sync> usb_device::bus::UsbBus for UsbBus<PINS> {
             // Setup USB FS speed [and frame interval]
             modify_reg!(otg_fs_device, regs.device, FS_DCFG,
                 DSPD: 0b11 // Device speed: Full speed
-            );
-
-            // Setting max RX FIFO size
-            write_reg!(otg_fs_global, regs.global, FS_GRXFSIZ, RX_FIFO_SIZE);
-
-            // setting up EP0 TX FIFO SZ as 64 byte
-            write_reg!(otg_fs_global, regs.global, FS_GNPTXFSIZ,
-                TX0FD: 16,
-                TX0FSA: RX_FIFO_SIZE
             );
 
             // unmask EP interrupts

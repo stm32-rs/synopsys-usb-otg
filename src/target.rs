@@ -13,57 +13,45 @@ pub use hal::stm32::OTG_FS_GLOBAL as OTG_GLOBAL;
 pub use hal::stm32::OTG_FS_DEVICE as OTG_DEVICE;
 pub use hal::stm32::OTG_FS_PWRCLK as OTG_PWRCLK;
 
-use crate::ral::{otg_global, otg_device, otg_pwrclk};
-
-pub const OTG_FS_BASE: usize = 0x5000_0000;
-pub const FIFO_OFFSET: usize = 0x1000;
-pub const FIFO_SIZE: usize = 0x1000;
-pub const FIFO_DEPTH_WORDS: u32 = 320;
-
-#[inline(always)]
-fn fifo_ptr(channel: usize) -> &'static vcell::VolatileCell<u32> {
-    assert!(channel <= 15);
-    let address = OTG_FS_BASE + FIFO_OFFSET + channel * FIFO_SIZE;
-    unsafe { &*(address as *const vcell::VolatileCell<u32>) }
-}
+use crate::ral::{otg_global, otg_device, otg_pwrclk, otg_fifo};
 
 pub fn fifo_write(channel: impl Into<usize>, mut buf: &[u8]) {
-    let fifo = fifo_ptr(channel.into());
+    let fifo = otg_fifo::instance(channel.into());
 
     while buf.len() >= 4 {
         let mut u32_bytes = [0u8; 4];
         u32_bytes.copy_from_slice(&buf[..4]);
         buf = &buf[4..];
-        fifo.set(u32::from_ne_bytes(u32_bytes));
+        fifo.write(u32::from_ne_bytes(u32_bytes));
     }
     if buf.len() > 0 {
         let mut u32_bytes = [0u8; 4];
         u32_bytes[..buf.len()].copy_from_slice(buf);
-        fifo.set(u32::from_ne_bytes(u32_bytes));
+        fifo.write(u32::from_ne_bytes(u32_bytes));
     }
 }
 
 pub fn fifo_read(mut buf: &mut [u8]) {
-    let fifo = fifo_ptr(0);
+    let fifo = otg_fifo::instance(0);
 
     while buf.len() >= 4 {
-        let word = fifo.get();
+        let word = fifo.read();
         let bytes = word.to_ne_bytes();
         buf[..4].copy_from_slice(&bytes);
         buf = &mut buf[4..];
     }
     if buf.len() > 0 {
-        let word = fifo.get();
+        let word = fifo.read();
         let bytes = word.to_ne_bytes();
         buf.copy_from_slice(&bytes[..buf.len()]);
     }
 }
 
 pub fn fifo_read_into(buf: &[VolatileCell<u32>]) {
-    let fifo = fifo_ptr(0);
+    let fifo = otg_fifo::instance(0);
 
     for p in buf {
-        let word = fifo.get();
+        let word = fifo.read();
         p.set(word);
     }
 }

@@ -17,6 +17,20 @@ pub mod otg_pwrclk {
     pub use stm32ral::otg_fs_pwrclk::OTG_FS_PWRCLK as OTG_PWRCLK;
 }
 
+pub mod otg_fifo {
+    use stm32ral::RWRegister;
+
+    pub const FIFO_DEPTH_WORDS: u32 = 320;
+
+    #[inline(always)]
+    pub fn instance(channel: usize) -> &'static RWRegister<u32> {
+        let base_address = 0x5000_0000;
+        assert!(channel <= 15);
+        let address = base_address + 0x1000 + channel * 0x1000;
+        unsafe { &*(address as *const RWRegister<u32>) }
+    }
+}
+
 pub mod endpoint_in {
     use stm32ral::RWRegister;
     use core::marker::PhantomData;

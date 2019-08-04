@@ -13,7 +13,7 @@ pub use hal::stm32::OTG_FS_GLOBAL;
 pub use hal::stm32::OTG_FS_DEVICE;
 pub use hal::stm32::OTG_FS_PWRCLK;
 
-use stm32ral::{otg_fs_global, otg_fs_device, otg_fs_pwrclk};
+use crate::ral::{otg_global, otg_device, otg_pwrclk};
 
 pub const OTG_FS_BASE: usize = 0x5000_0000;
 pub const FIFO_OFFSET: usize = 0x1000;
@@ -97,9 +97,9 @@ pub use cortex_m::asm::delay;
 
 /// Wrapper around device-specific peripheral that provides unified register interface
 pub struct UsbRegisters {
-    pub global: otg_fs_global::Instance,
-    pub device: otg_fs_device::Instance,
-    pub pwrclk: otg_fs_pwrclk::Instance,
+    pub global: otg_global::Instance,
+    pub device: otg_device::Instance,
+    pub pwrclk: otg_pwrclk::Instance,
 }
 
 unsafe impl Send for UsbRegisters {}
@@ -107,9 +107,9 @@ unsafe impl Send for UsbRegisters {}
 impl UsbRegisters {
     pub fn new(_global: OTG_FS_GLOBAL, _device: OTG_FS_DEVICE, _pwrclk: OTG_FS_PWRCLK) -> Self {
         Self {
-            global: unsafe { otg_fs_global::OTG_FS_GLOBAL::steal() },
-            device: unsafe { otg_fs_device::OTG_FS_DEVICE::steal() },
-            pwrclk: unsafe { otg_fs_pwrclk::OTG_FS_PWRCLK::steal() },
+            global: unsafe { otg_global::OTG_GLOBAL::steal() },
+            device: unsafe { otg_device::OTG_DEVICE::steal() },
+            pwrclk: unsafe { otg_pwrclk::OTG_PWRCLK::steal() },
         }
     }
 }

@@ -1,10 +1,27 @@
 #![allow(non_snake_case)]
 
+pub use stm32ral::{read_reg, write_reg, modify_reg};
+
+pub mod otg_global {
+    pub use stm32ral::otg_fs_global::*;
+    pub use stm32ral::otg_fs_global::OTG_FS_GLOBAL as OTG_GLOBAL;
+}
+
+pub mod otg_device {
+    pub use stm32ral::otg_fs_device::*;
+    pub use stm32ral::otg_fs_device::OTG_FS_DEVICE as OTG_DEVICE;
+}
+
+pub mod otg_pwrclk {
+    pub use stm32ral::otg_fs_pwrclk::*;
+    pub use stm32ral::otg_fs_pwrclk::OTG_FS_PWRCLK as OTG_PWRCLK;
+}
+
 pub mod endpoint_in {
     use stm32ral::RWRegister;
     use core::marker::PhantomData;
 
-    pub use stm32ral::stm32f4::peripherals::otg_fs_device_v1::{
+    pub use stm32ral::otg_fs_device::{
         DIEPCTL1 as DIEPCTL,
         DIEPINT1 as DIEPINT,
         DIEPTSIZ1 as DIEPTSIZ,
@@ -49,7 +66,7 @@ pub mod endpoint0_out {
     use stm32ral::RWRegister;
     use core::marker::PhantomData;
 
-    pub use stm32ral::stm32f4::peripherals::otg_fs_device_v1::{
+    pub use stm32ral::otg_fs_device::{
         DOEPCTL0,
         DOEPINT0,
         DOEPTSIZ0,
@@ -91,7 +108,7 @@ pub mod endpoint_out {
     use stm32ral::RWRegister;
     use core::marker::PhantomData;
 
-    pub use stm32ral::stm32f4::peripherals::otg_fs_device_v1::{
+    pub use stm32ral::otg_fs_device::{
         DOEPCTL1 as DOEPCTL,
         DOEPINT1 as DOEPINT,
         DOEPTSIZ1 as DOEPTSIZ,

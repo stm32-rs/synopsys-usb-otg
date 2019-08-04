@@ -5,7 +5,7 @@ use usb_device::endpoint::{EndpointType, EndpointAddress};
 use cortex_m::interrupt::{self, Mutex, CriticalSection};
 use crate::ral::{read_reg, write_reg, modify_reg, otg_global, otg_device, otg_pwrclk};
 
-use crate::target::{OTG_FS_GLOBAL, OTG_FS_DEVICE, OTG_FS_PWRCLK, apb_usb_enable, UsbRegisters, UsbPins, FIFO_DEPTH_WORDS};
+use crate::target::{OTG_GLOBAL, OTG_DEVICE, OTG_PWRCLK, apb_usb_enable, UsbRegisters, UsbPins, FIFO_DEPTH_WORDS};
 use crate::endpoint::{EndpointIn, EndpointOut, Endpoint};
 use crate::endpoint_memory::{EndpointMemoryAllocator, EndpointBufferState};
 use core::ops::Deref;
@@ -22,7 +22,7 @@ pub struct UsbBus<PINS> {
 
 impl<PINS: Send+Sync> UsbBus<PINS> {
     /// Constructs a new USB peripheral driver.
-    pub fn new(regs: (OTG_FS_GLOBAL, OTG_FS_DEVICE, OTG_FS_PWRCLK), _pins: PINS, ep_memory: &'static mut [u32]) -> UsbBusAllocator<Self>
+    pub fn new(regs: (OTG_GLOBAL, OTG_DEVICE, OTG_PWRCLK), _pins: PINS, ep_memory: &'static mut [u32]) -> UsbBusAllocator<Self>
         where PINS: UsbPins
     {
         let endpoints_in = [

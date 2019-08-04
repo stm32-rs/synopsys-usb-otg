@@ -9,9 +9,9 @@ pub use stm32f4xx_hal as hal;
 
 
 // USB PAC reexports
-pub use hal::stm32::OTG_FS_GLOBAL;
-pub use hal::stm32::OTG_FS_DEVICE;
-pub use hal::stm32::OTG_FS_PWRCLK;
+pub use hal::stm32::OTG_FS_GLOBAL as OTG_GLOBAL;
+pub use hal::stm32::OTG_FS_DEVICE as OTG_DEVICE;
+pub use hal::stm32::OTG_FS_PWRCLK as OTG_PWRCLK;
 
 use crate::ral::{otg_global, otg_device, otg_pwrclk};
 
@@ -105,7 +105,7 @@ pub struct UsbRegisters {
 unsafe impl Send for UsbRegisters {}
 
 impl UsbRegisters {
-    pub fn new(_global: OTG_FS_GLOBAL, _device: OTG_FS_DEVICE, _pwrclk: OTG_FS_PWRCLK) -> Self {
+    pub fn new(_global: OTG_GLOBAL, _device: OTG_DEVICE, _pwrclk: OTG_PWRCLK) -> Self {
         Self {
             global: unsafe { otg_global::OTG_GLOBAL::steal() },
             device: unsafe { otg_device::OTG_DEVICE::steal() },

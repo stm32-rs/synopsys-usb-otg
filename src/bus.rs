@@ -96,18 +96,31 @@ impl<PINS: Send+Sync> UsbBus<PINS> {
 
         for ep in &self.endpoints_in {
             if ep.is_initialized() {
+                // enabling EP TX interrupt
+                modify_reg!(otg_device, regs.device, DAINTMSK, |v| v | (0x0001 << ep.address().index()));
+
                 ep.configure(cs);
             }
         }
 
         for ep in &self.endpoints_out {
             if ep.is_initialized() {
+                if ep.address().index() == 0 {
+                    // enabling RX interrupt from EP0
+                    modify_reg!(otg_device, regs.device, DAINTMSK, |v| v | 0x00010000);
+                }
+
                 ep.configure(cs);
             }
         }
     }
 
     pub fn deconfigure_all(&self, cs: &CriticalSection) {
+        let regs = self.regs.borrow(cs);
+
+        // disable interrupts
+        modify_reg!(otg_device, regs.device, DAINTMSK, IEPM: 0, OEPM: 0);
+
         for ep in &self.endpoints_in {
             ep.deconfigure(cs);
         }

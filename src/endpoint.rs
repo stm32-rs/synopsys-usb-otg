@@ -2,7 +2,7 @@ use cortex_m::interrupt::{self, CriticalSection, Mutex};
 use usb_device::{Result, UsbError};
 use usb_device::endpoint::{EndpointType, EndpointAddress};
 use crate::endpoint_memory::{EndpointBuffer, EndpointBufferState};
-use crate::ral::{read_reg, write_reg, modify_reg, otg_device, endpoint_in, endpoint_out, endpoint0_out};
+use crate::ral::{read_reg, write_reg, modify_reg, endpoint_in, endpoint_out, endpoint0_out};
 use crate::target::fifo_write;
 use core::ops::{Deref, DerefMut};
 use core::cell::RefCell;
@@ -68,8 +68,6 @@ impl Endpoint {
     }
 
     pub fn configure(&self, _cs: &CriticalSection) {
-        let device = unsafe { otg_device::OTG_DEVICE::steal() };
-
         if self.address.index() == 0 {
             let mpsiz = match self.max_packet_size {
                 8 => 0b11,
@@ -78,9 +76,6 @@ impl Endpoint {
                 64 => 0b00,
                 other => panic!("Unsupported EP0 size: {}", other),
             };
-
-            // enabling RX and TX interrupts from EP0
-            modify_reg!(otg_device, device, DAINTMSK, |v| v | 0x00010001);
 
             if self.address.is_in() {
                 let regs = endpoint_in::instance(self.address.index());
@@ -95,9 +90,6 @@ impl Endpoint {
             }
         } else {
             if self.address.is_in() {
-                // enabling EP TX interrupt
-                modify_reg!(otg_device, device, DAINTMSK, |v| v | (0x0001 << self.address.index()));
-
                 let regs = endpoint_in::instance(self.address.index());
                 write_reg!(endpoint_in, regs, DIEPCTL,
                     SNAK: 1,
@@ -122,10 +114,6 @@ impl Endpoint {
     }
 
     pub fn deconfigure(&self, _cs: &CriticalSection) {
-        // disable interrupt
-        let device = unsafe { otg_device::OTG_DEVICE::steal() };
-        modify_reg!(otg_device, device, DAINTMSK, IEPM: 0, OEPM: 0); // TODO
-
         if self.address.is_in() {
             let regs = endpoint_in::instance(self.address.index());
 

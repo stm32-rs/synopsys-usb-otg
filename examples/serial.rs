@@ -8,7 +8,6 @@ use cortex_m_rt::entry;
 use stm32f429_usbd_fs::{UsbBus, sprintln};
 use stm32f4xx_hal::{prelude::*, stm32};
 use usb_device::prelude::*;
-use embedded_hal::digital::v2::OutputPin;
 
 static mut EP_MEMORY: [u32; 1024] = [0; 1024];
 

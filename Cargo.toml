@@ -14,3 +14,4 @@ cortex-m-semihosting = "0.3.3"
 
 [features]
 stm32f429xx = ['stm32f4xx-hal/stm32f429', 'stm32ral/stm32f429']
+stm32f401xx = ['stm32f4xx-hal/stm32f401', 'stm32ral/stm32f401']

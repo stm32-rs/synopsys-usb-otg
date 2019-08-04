@@ -4,7 +4,7 @@ pub mod endpoint_in {
     use stm32ral::RWRegister;
     use core::marker::PhantomData;
 
-    pub use stm32ral::stm32f4::peripherals::otg_fs_device_v2::{
+    pub use stm32ral::stm32f4::peripherals::otg_fs_device_v1::{
         DIEPCTL1 as DIEPCTL,
         DIEPINT1 as DIEPINT,
         DIEPTSIZ1 as DIEPTSIZ,
@@ -49,7 +49,7 @@ pub mod endpoint0_out {
     use stm32ral::RWRegister;
     use core::marker::PhantomData;
 
-    pub use stm32ral::stm32f4::peripherals::otg_fs_device_v2::{
+    pub use stm32ral::stm32f4::peripherals::otg_fs_device_v1::{
         DOEPCTL0,
         DOEPINT0,
         DOEPTSIZ0,
@@ -91,7 +91,7 @@ pub mod endpoint_out {
     use stm32ral::RWRegister;
     use core::marker::PhantomData;
 
-    pub use stm32ral::stm32f4::peripherals::otg_fs_device_v2::{
+    pub use stm32ral::stm32f4::peripherals::otg_fs_device_v1::{
         DOEPCTL1 as DOEPCTL,
         DOEPINT1 as DOEPINT,
         DOEPTSIZ1 as DOEPTSIZ,

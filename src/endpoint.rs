@@ -49,10 +49,10 @@ impl Endpoint {
 
             if self.address.is_in() {
                 let ep = endpoint_in::instance(self.address.index());
-                modify_reg!(endpoint_in, ep, DIEPCTL, Stall: stalled as u32);
+                modify_reg!(endpoint_in, ep, DIEPCTL, STALL: stalled as u32);
             } else {
                 let ep = endpoint_out::instance(self.address.index());
-                modify_reg!(endpoint_out, ep, DOEPCTL, Stall: stalled as u32);
+                modify_reg!(endpoint_out, ep, DOEPCTL, STALL: stalled as u32);
             }
         })
     }
@@ -60,10 +60,10 @@ impl Endpoint {
     pub fn is_stalled(&self) -> bool {
         let stall = if self.address.is_in() {
             let ep = endpoint_in::instance(self.address.index());
-            read_reg!(endpoint_in, ep, DIEPCTL, Stall)
+            read_reg!(endpoint_in, ep, DIEPCTL, STALL)
         } else {
             let ep = endpoint_out::instance(self.address.index());
-            read_reg!(endpoint_out, ep, DOEPCTL, Stall)
+            read_reg!(endpoint_out, ep, DOEPCTL, STALL)
         };
         stall != 0
     }

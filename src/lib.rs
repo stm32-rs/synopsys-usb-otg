@@ -20,4 +20,5 @@ pub type UsbBusType = UsbBus<UsbPinsType>;
 mod pac;
 mod ral;
 
+#[cfg(feature = "stm32f429xx")]
 pub mod debug;

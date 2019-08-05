@@ -165,7 +165,7 @@ impl EndpointIn {
         if !self.is_initialized() {
             return Err(UsbError::InvalidEndpoint);
         }
-        if read_reg!(endpoint_in, ep, DIEPTSIZ, PKTCNT) != 0 {
+        if self.address.index() != 0 && read_reg!(endpoint_in, ep, DIEPCTL, EPENA) != 0{
             return Err(UsbError::WouldBlock);
         }
 

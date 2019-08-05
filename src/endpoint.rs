@@ -173,6 +173,14 @@ impl EndpointIn {
             return Err(UsbError::BufferOverflow);
         }
 
+        if !buf.is_empty() {
+            // Check for FIFO free space
+            let size_words = (buf.len() + 3) / 4;
+            if size_words > read_reg!(endpoint_in, ep, DTXFSTS, INEPTFSAV) as usize {
+                return Err(UsbError::WouldBlock);
+            }
+        }
+
         write_reg!(endpoint_in, ep, DIEPTSIZ, PKTCNT: 1, XFRSIZ: buf.len() as u32);
         modify_reg!(endpoint_in, ep, DIEPCTL, CNAK: 1, EPENA: 1);
 

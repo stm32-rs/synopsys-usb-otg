@@ -18,6 +18,3 @@ pub use crate::target::usb_pins::UsbPinsType;
 pub type UsbBusType = UsbBus<UsbPinsType>;
 
 mod ral;
-
-#[cfg(feature = "stm32f429xx")]
-pub mod debug;

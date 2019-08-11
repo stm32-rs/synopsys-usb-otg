@@ -181,7 +181,11 @@ impl EndpointIn {
             }
         }
 
+        #[cfg(feature = "fs")]
         write_reg!(endpoint_in, ep, DIEPTSIZ, PKTCNT: 1, XFRSIZ: buf.len() as u32);
+        #[cfg(feature = "hs")]
+        write_reg!(endpoint_in, ep, DIEPTSIZ, MCNT: 1, PKTCNT: 1, XFRSIZ: buf.len() as u32);
+
         modify_reg!(endpoint_in, ep, DIEPCTL, CNAK: 1, EPENA: 1);
 
         fifo_write(self.address.index(), buf);

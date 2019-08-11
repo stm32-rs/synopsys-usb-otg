@@ -52,7 +52,10 @@ impl<PINS: Send+Sync> UsbBus<PINS> {
         let regs = self.regs.borrow(cs);
 
         // Rx FIFO
+        #[cfg(feature = "fs")]
         let rx_fifo_size = self.endpoint_allocator.total_rx_buffer_size_words() as u32 + 20;
+        #[cfg(feature = "hs")]
+        let rx_fifo_size = self.endpoint_allocator.total_rx_buffer_size_words() as u32 + 30;
         write_reg!(otg_global, regs.global, GRXFSIZ, rx_fifo_size);
         let mut fifo_top = rx_fifo_size;
 
@@ -192,10 +195,19 @@ impl<PINS: Send+Sync> usb_device::bus::UsbBus for UsbBus<PINS> {
             while read_reg!(otg_global, regs.global, GRSTCTL, AHBIDL) == 0 {}
 
             // Configure OTG as device
+            #[cfg(feature = "fs")]
             modify_reg!(otg_global, regs.global, GUSBCFG,
                 SRPCAP: 0, // SRP capability is not enabled
                 TRDT: 0x6, // ??? USB turnaround time
                 FDMOD: 1 // Force device mode
+            );
+            #[cfg(feature = "hs")]
+            modify_reg!(otg_global, regs.global, GUSBCFG,
+                SRPCAP: 0, // SRP capability is not enabled
+                TRDT: 0x9, // ??? USB turnaround time
+                TOCAL: 0x1,
+                FDMOD: 1, // Force device mode
+                PHYSEL: 1
             );
 
             // Configuring Vbus sense and SOF output

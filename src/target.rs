@@ -9,9 +9,19 @@ pub use stm32f4xx_hal as hal;
 
 
 // USB PAC reexports
+#[cfg(feature = "fs")]
 pub use hal::stm32::OTG_FS_GLOBAL as OTG_GLOBAL;
+#[cfg(feature = "fs")]
 pub use hal::stm32::OTG_FS_DEVICE as OTG_DEVICE;
+#[cfg(feature = "fs")]
 pub use hal::stm32::OTG_FS_PWRCLK as OTG_PWRCLK;
+
+#[cfg(feature = "hs")]
+pub use hal::stm32::OTG_HS_GLOBAL as OTG_GLOBAL;
+#[cfg(feature = "hs")]
+pub use hal::stm32::OTG_HS_DEVICE as OTG_DEVICE;
+#[cfg(feature = "hs")]
+pub use hal::stm32::OTG_HS_PWRCLK as OTG_PWRCLK;
 
 use crate::ral::{otg_global, otg_device, otg_pwrclk, otg_fifo};
 
@@ -60,7 +70,10 @@ pub fn fifo_read_into(buf: &[VolatileCell<u32>]) {
 pub fn apb_usb_enable() {
     cortex_m::interrupt::free(|_| {
         let rcc = unsafe { (&*hal::stm32::RCC::ptr()) };
+        #[cfg(feature = "fs")]
         rcc.ahb2enr.modify(|_, w| w.otgfsen().set_bit());
+        #[cfg(feature = "hs")]
+        rcc.ahb1enr.modify(|_, w| w.otghsen().set_bit());
     });
 }
 
@@ -108,12 +121,27 @@ pub trait UsbPins: Send { }
 
 
 pub mod usb_pins {
+    #[cfg(feature = "fs")]
     use super::hal::gpio::{AF10, Alternate};
-    use super::hal::gpio::gpioa::{PA11, PA12};
+    #[cfg(feature = "hs")]
+    use super::hal::gpio::{AF12, Alternate};
 
+    #[cfg(feature = "fs")]
+    use super::hal::gpio::gpioa::{PA11, PA12};
+    #[cfg(feature = "hs")]
+    use super::hal::gpio::gpiob::{PB13, PB14, PB15};
+
+    #[cfg(feature = "fs")]
     pub type UsbPinsType = (
         PA11<Alternate<AF10>>,
         PA12<Alternate<AF10>>
     );
+    #[cfg(feature = "hs")]
+    pub type UsbPinsType = (
+        PB13<Alternate<AF12>>, // VBUS pin
+        PB14<Alternate<AF12>>, // DM pin
+        PB15<Alternate<AF12>>  // DP pin
+    );
+
     impl super::UsbPins for UsbPinsType {}
 }

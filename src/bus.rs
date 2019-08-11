@@ -61,10 +61,18 @@ impl<PINS: Send+Sync> UsbBus<PINS> {
 
         // Tx FIFO #0
         let fifo_size = cmp::max(self.endpoints_in[0].fifo_size_words(), 16);
+
+        #[cfg(feature = "fs")]
         write_reg!(otg_global, regs.global, GNPTXFSIZ,
             TX0FD: fifo_size,
             TX0FSA: fifo_top
         );
+        #[cfg(feature = "hs")]
+        write_reg!(otg_global, regs.global, GNPTXFSIZ_Host,
+            TX0FD: fifo_size,
+            TX0FSA: fifo_top
+        );
+
         fifo_top += fifo_size;
 
         // Tx FIFO #1

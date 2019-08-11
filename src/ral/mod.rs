@@ -35,7 +35,10 @@ pub mod otg_pwrclk {
 pub mod otg_fifo {
     use stm32ral::RWRegister;
 
+    #[cfg(feature = "fs")]
     pub const FIFO_DEPTH_WORDS: u32 = 320;
+    #[cfg(feature = "hs")]
+    pub const FIFO_DEPTH_WORDS: u32 = 1024;
 
     #[inline(always)]
     pub fn instance(channel: usize) -> &'static RWRegister<u32> {

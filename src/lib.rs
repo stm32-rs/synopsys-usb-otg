@@ -5,6 +5,12 @@
 
 #![no_std]
 
+#[cfg(all(feature = "fs", feature = "hs"))]
+compile_error!("choose only one USB mode");
+
+#[cfg(not(any(feature = "fs", feature ="hs")))]
+compile_error!("select USB mode feature (fs/hs)");
+
 mod endpoint;
 mod endpoint_memory;
 

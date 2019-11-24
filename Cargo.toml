@@ -9,11 +9,15 @@ cortex-m = "0.6.0"
 vcell = "0.1.0"
 stm32f4xx-hal = "0.5.0"
 usb-device = "0.2.2"
-stm32ral = "0.2.0"
 cortex-m-semihosting = "0.3.3"
+
+[dependencies.stm32ral]
+git = "https://github.com/Disasm/stm32ral"
+rev = "aa95c633b7bf535c96d7eac997deb361aabae87c"
+features = ["stm32f429"]
 
 [features]
 hs = []
 fs = []
-stm32f429xx = ['stm32f4xx-hal/stm32f429', 'stm32ral/stm32f429']
-stm32f401xx = ['stm32f4xx-hal/stm32f401', 'stm32ral/stm32f401']
+stm32f429xx = ['stm32f4xx-hal/stm32f429']
+stm32f401xx = ['stm32f4xx-hal/stm32f401']

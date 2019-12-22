@@ -1,30 +1,28 @@
-use core::marker::PhantomData;
 use usb_device::{Result, UsbDirection, UsbError};
 use usb_device::bus::{UsbBusAllocator, PollResult};
 use usb_device::endpoint::{EndpointType, EndpointAddress};
 use crate::ral::{read_reg, write_reg, modify_reg, otg_global, otg_device, otg_pwrclk};
 
-use crate::target::{OTG_GLOBAL, OTG_DEVICE, OTG_PWRCLK, apb_usb_enable, UsbRegisters, UsbPins};
+use crate::target::UsbRegisters;
 use crate::target::interrupt::{self, Mutex, CriticalSection};
 use crate::endpoint::{EndpointIn, EndpointOut, Endpoint};
 use crate::endpoint_memory::{EndpointMemoryAllocator, EndpointBufferState};
 use core::ops::Deref;
 use core::cmp;
+use crate::UsbPeripheral;
 
 /// USB peripheral driver for STM32 microcontrollers.
-pub struct UsbBus<PINS> {
-    regs: Mutex<UsbRegisters>,
+pub struct UsbBus<USB> {
+    peripheral: USB,
+    regs: Mutex<UsbRegisters<USB>>,
     endpoints_in: [EndpointIn; 4],
     endpoints_out: [EndpointOut; 4],
     endpoint_allocator: EndpointMemoryAllocator,
-    pins: PhantomData<PINS>,
 }
 
-impl<PINS: Send+Sync> UsbBus<PINS> {
+impl<USB: UsbPeripheral> UsbBus<USB> {
     /// Constructs a new USB peripheral driver.
-    pub fn new(regs: (OTG_GLOBAL, OTG_DEVICE, OTG_PWRCLK), _pins: PINS, ep_memory: &'static mut [u32]) -> UsbBusAllocator<Self>
-        where PINS: UsbPins
-    {
+    pub fn new(peripheral: USB, ep_memory: &'static mut [u32]) -> UsbBusAllocator<Self> {
         let endpoints_in = [
             EndpointIn::new(EndpointAddress::from_parts(0, UsbDirection::In)),
             EndpointIn::new(EndpointAddress::from_parts(1, UsbDirection::In)),
@@ -38,24 +36,29 @@ impl<PINS: Send+Sync> UsbBus<PINS> {
             EndpointOut::new(EndpointAddress::from_parts(3, UsbDirection::Out)),
         ];
         let bus = UsbBus {
-            regs: Mutex::new(UsbRegisters::new(regs.0, regs.1, regs.2)),
+            peripheral,
+            regs: Mutex::new(UsbRegisters::new()),
             endpoint_allocator: EndpointMemoryAllocator::new(ep_memory),
             endpoints_in,
             endpoints_out,
-            pins: PhantomData,
         };
 
         UsbBusAllocator::new(bus)
+    }
+
+    pub fn free(self) -> USB {
+        self.peripheral
     }
 
     pub fn configure_all(&self, cs: &CriticalSection) {
         let regs = self.regs.borrow(cs);
 
         // Rx FIFO
-        #[cfg(feature = "fs")]
-        let rx_fifo_size = self.endpoint_allocator.total_rx_buffer_size_words() as u32 + 20;
-        #[cfg(feature = "hs")]
-        let rx_fifo_size = self.endpoint_allocator.total_rx_buffer_size_words() as u32 + 30;
+        let rx_fifo_size = if USB::HIGH_SPEED {
+            self.endpoint_allocator.total_rx_buffer_size_words() as u32 + 30
+        } else {
+            self.endpoint_allocator.total_rx_buffer_size_words() as u32 + 20
+        };
         write_reg!(otg_global, regs.global, GRXFSIZ, rx_fifo_size);
         let mut fifo_top = rx_fifo_size;
 
@@ -168,7 +171,7 @@ fn find_free_endpoint<EP: Deref<Target=Endpoint>>(
     }
 }
 
-impl<PINS: Send+Sync> usb_device::bus::UsbBus for UsbBus<PINS> {
+impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
     fn alloc_ep(
         &mut self,
         ep_dir: UsbDirection,
@@ -194,7 +197,7 @@ impl<PINS: Send+Sync> usb_device::bus::UsbBus for UsbBus<PINS> {
 
     fn enable(&mut self) {
         // Enable USB_OTG in RCC
-        apb_usb_enable();
+        USB::enable();
 
         interrupt::free(|cs| {
             let regs = self.regs.borrow(cs);

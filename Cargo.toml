@@ -1,5 +1,5 @@
 [package]
-name = "stm32f429-usbd-fs"
+name = "synopsys-usb-otg"
 version = "0.1.0"
 authors = ["Vadim Kaushan <admin@disasm.info>"]
 edition = "2018"

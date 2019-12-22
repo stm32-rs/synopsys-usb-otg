@@ -1,7 +1,4 @@
-//! USB peripheral driver for STM32 microcontrollers.
-//!
-//! This also serves as the reference implementation and example repository for the `usb-device`
-//! crate for now.
+//! USB peripheral driver for Synopsys USB OTG peripherals.
 
 #![no_std]
 

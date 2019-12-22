@@ -1,9 +1,9 @@
-use cortex_m::interrupt::{self, CriticalSection, Mutex};
 use usb_device::{Result, UsbError};
 use usb_device::endpoint::{EndpointType, EndpointAddress};
 use crate::endpoint_memory::{EndpointBuffer, EndpointBufferState};
 use crate::ral::{read_reg, write_reg, modify_reg, endpoint_in, endpoint_out, endpoint0_out};
 use crate::target::fifo_write;
+use crate::target::interrupt::{self, CriticalSection, Mutex};
 use core::ops::{Deref, DerefMut};
 use core::cell::RefCell;
 

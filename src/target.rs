@@ -4,6 +4,9 @@
 
 use vcell::VolatileCell;
 
+#[cfg(feature = "cortex-m")]
+pub use cortex_m::interrupt;
+
 // Export HAL
 pub use stm32f4xx_hal as hal;
 

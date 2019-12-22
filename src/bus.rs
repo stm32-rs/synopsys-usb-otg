@@ -2,10 +2,10 @@ use core::marker::PhantomData;
 use usb_device::{Result, UsbDirection, UsbError};
 use usb_device::bus::{UsbBusAllocator, PollResult};
 use usb_device::endpoint::{EndpointType, EndpointAddress};
-use cortex_m::interrupt::{self, Mutex, CriticalSection};
 use crate::ral::{read_reg, write_reg, modify_reg, otg_global, otg_device, otg_pwrclk};
 
 use crate::target::{OTG_GLOBAL, OTG_DEVICE, OTG_PWRCLK, apb_usb_enable, UsbRegisters, UsbPins};
+use crate::target::interrupt::{self, Mutex, CriticalSection};
 use crate::endpoint::{EndpointIn, EndpointOut, Endpoint};
 use crate::endpoint_memory::{EndpointMemoryAllocator, EndpointBufferState};
 use core::ops::Deref;

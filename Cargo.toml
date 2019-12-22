@@ -3,6 +3,7 @@ name = "synopsys-usb-otg"
 version = "0.1.0"
 authors = ["Vadim Kaushan <admin@disasm.info>"]
 edition = "2018"
+license = "MIT"
 
 [dependencies]
 riscv = { version = "0.5.4", optional = true }

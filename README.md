@@ -1,6 +1,6 @@
 [![crates.io](https://img.shields.io/crates/d/synopsys-usb-otg.svg)](https://crates.io/crates/synopsys-usb-otg)
 [![crates.io](https://img.shields.io/crates/v/synopsys-usb-otg.svg)](https://crates.io/crates/synopsys-usb-otg)
-[![Build Status](https://travis-ci.org/stm32-rs/synopsys-usb-otg.svg?branch=master)](https://travis-ci.org/stm32-rs/synopsys-usb-otg)
+[![Build Status](https://travis-ci.com/stm32-rs/synopsys-usb-otg.svg?branch=master)](https://travis-ci.com/stm32-rs/synopsys-usb-otg)
 
 # `synopsys-usb-otg`
 

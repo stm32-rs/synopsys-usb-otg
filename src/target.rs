@@ -7,6 +7,8 @@ use core::marker::PhantomData;
 
 #[cfg(feature = "cortex-m")]
 pub use cortex_m::interrupt;
+#[cfg(feature = "riscv")]
+pub use riscv::interrupt;
 
 use crate::ral::{otg_global, otg_device, otg_pwrclk, otg_fifo};
 use crate::UsbPeripheral;

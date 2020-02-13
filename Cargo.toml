@@ -16,6 +16,9 @@ vcell = "0.1.0"
 usb-device = "0.2.2"
 stm32ral = { version = "0.3.1", features = ["stm32f429"] }
 
+[package.metadata.docs.rs]
+features = ['cortex-m', 'fs']
+
 [features]
 hs = []
 fs = []

@@ -1,6 +1,6 @@
 use usb_device::{Result, UsbDirection, UsbError};
-use usb_device::bus::{UsbBusAllocator, PollResult};
-use usb_device::endpoint::{EndpointType, EndpointAddress};
+use usb_device::bus::PollResult;
+use usb_device::endpoint::{EndpointType, EndpointAddress, EndpointDescriptor};
 use crate::ral::{read_reg, write_reg, modify_reg, otg_global, otg_device, otg_pwrclk};
 
 use crate::target::UsbRegisters;
@@ -10,40 +10,25 @@ use crate::endpoint_memory::{EndpointMemoryAllocator, EndpointBufferState};
 use core::ops::Deref;
 use core::cmp;
 use crate::UsbPeripheral;
+use usb_device::allocator::{EndpointConfig, UsbAllocator};
 
 /// USB peripheral driver for STM32 microcontrollers.
 pub struct UsbBus<USB> {
     peripheral: USB,
     regs: Mutex<UsbRegisters<USB>>,
-    endpoints_in: [EndpointIn; 4],
-    endpoints_out: [EndpointOut; 4],
     endpoint_allocator: EndpointMemoryAllocator,
 }
 
 impl<USB: UsbPeripheral> UsbBus<USB> {
     /// Constructs a new USB peripheral driver.
-    pub fn new(peripheral: USB, ep_memory: &'static mut [u32]) -> UsbBusAllocator<Self> {
-        let endpoints_in = [
-            EndpointIn::new(EndpointAddress::from_parts(0, UsbDirection::In)),
-            EndpointIn::new(EndpointAddress::from_parts(1, UsbDirection::In)),
-            EndpointIn::new(EndpointAddress::from_parts(2, UsbDirection::In)),
-            EndpointIn::new(EndpointAddress::from_parts(3, UsbDirection::In)),
-        ];
-        let endpoints_out = [
-            EndpointOut::new(EndpointAddress::from_parts(0, UsbDirection::Out)),
-            EndpointOut::new(EndpointAddress::from_parts(1, UsbDirection::Out)),
-            EndpointOut::new(EndpointAddress::from_parts(2, UsbDirection::Out)),
-            EndpointOut::new(EndpointAddress::from_parts(3, UsbDirection::Out)),
-        ];
+    pub fn new(peripheral: USB, ep_memory: &'static mut [u32]) -> UsbAllocator<Self> {
         let bus = UsbBus {
             peripheral,
             regs: Mutex::new(UsbRegisters::new()),
             endpoint_allocator: EndpointMemoryAllocator::new(ep_memory),
-            endpoints_in,
-            endpoints_out,
         };
 
-        UsbBusAllocator::new(bus)
+        UsbAllocator::new(bus)
     }
 
     pub fn free(self) -> USB {
@@ -111,7 +96,7 @@ impl<USB: UsbPeripheral> UsbBus<USB> {
         for ep in &self.endpoints_in {
             if ep.is_initialized() {
                 // enabling EP TX interrupt
-                modify_reg!(otg_device, regs.device, DAINTMSK, |v| v | (0x0001 << ep.address().index()));
+                modify_reg!(otg_device, regs.device, DAINTMSK, |v| v | (0x0001 << ep.address().number()));
 
                 ep.configure(cs);
             }
@@ -119,7 +104,7 @@ impl<USB: UsbPeripheral> UsbBus<USB> {
 
         for ep in &self.endpoints_out {
             if ep.is_initialized() {
-                if ep.address().index() == 0 {
+                if ep.address().number() == 0 {
                     // enabling RX interrupt from EP0
                     modify_reg!(otg_device, regs.device, DAINTMSK, |v| v | 0x00010000);
                 }
@@ -171,28 +156,95 @@ fn find_free_endpoint<EP: Deref<Target=Endpoint>>(
     }
 }
 
-impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
-    fn alloc_ep(
-        &mut self,
-        ep_dir: UsbDirection,
-        ep_addr: Option<EndpointAddress>,
-        ep_type: EndpointType,
-        max_packet_size: u16,
-        _interval: u8) -> Result<EndpointAddress>
-    {
-        if ep_dir == UsbDirection::In {
-            let ep = find_free_endpoint(&mut self.endpoints_in, ep_addr)?;
-            ep.initialize(ep_type, max_packet_size);
+pub struct EndpointAllocator {
+    endpoints_in: u8,
+    endpoints_out: u8,
+}
 
-            Ok(ep.address())
-        } else {
-            let ep = find_free_endpoint(&mut self.endpoints_out, ep_addr)?;
-
-            let buffer = self.endpoint_allocator.allocate_rx_buffer(max_packet_size as usize)?;
-            ep.initialize(ep_type, max_packet_size, buffer);
-
-            Ok(ep.address())
+impl EndpointAllocator {
+    pub fn new() -> Self {
+        Self {
+            endpoints_in: 0,
+            endpoints_out: 0,
         }
+    }
+
+    fn alloc_number(bitmap: &mut u8, config: &EndpointConfig) -> Result<u8> {
+        if let Some(number) = config.number {
+            if *bitmap & (1 << number) == 0 {
+                *bitmap |= (1 << number);
+                Ok(number)
+            } else {
+                Err(UsbError::InvalidEndpoint)
+            }
+        } else {
+            // Skip EP0
+            for number in 1..4 {
+                if *bitmap & (1 << number) == 0 {
+                    *bitmap |= (1 << number);
+                    return Ok(number)
+                }
+            }
+            Err(UsbError::EndpointOverflow)
+        }
+    }
+
+    fn alloc(bitmap: &mut u8, config: &EndpointConfig, direction: UsbDirection) -> Result<EndpointDescriptor> {
+        let number = Self::alloc_number(bitmap, config)?;
+        Ok(EndpointDescriptor {
+            address: EndpointAddress::from_parts(number, direction),
+            ep_type: config.ep_type,
+            max_packet_size: config.max_packet_size,
+            interval: config.interval
+        })
+    }
+}
+
+impl<USB: UsbPeripheral> usb_device::bus::EndpointAllocator<UsbBus<USB>> for EndpointAllocator {
+    fn alloc_out(&mut self, config: &EndpointConfig) -> Result<EndpointOut> {
+        let descr = Self::alloc(&mut self.endpoints_out, config, UsbDirection::Out)?;
+
+//            let buffer = self.endpoint_allocator.allocate_rx_buffer(max_packet_size as usize)?;
+//            ep.initialize(ep_type, max_packet_size, buffer);
+        unimplemented!()
+    }
+
+    fn alloc_in(&mut self, config: &EndpointConfig) -> Result<EndpointIn> {
+        let descr = Self::alloc(&mut self.endpoints_in, config, UsbDirection::In)?;
+        unimplemented!()
+    }
+
+//    fn alloc_ep(
+//        &mut self,
+//        ep_dir: UsbDirection,
+//        ep_addr: Option<EndpointAddress>,
+//        ep_type: EndpointType,
+//        max_packet_size: u16,
+//        _interval: u8) -> Result<EndpointAddress>
+//    {
+//        if ep_dir == UsbDirection::In {
+//            let ep = find_free_endpoint(&mut self.endpoints_in, ep_addr)?;
+//            ep.initialize(ep_type, max_packet_size);
+//
+//            Ok(ep.address())
+//        } else {
+//            let ep = find_free_endpoint(&mut self.endpoints_out, ep_addr)?;
+//
+//            let buffer = self.endpoint_allocator.allocate_rx_buffer(max_packet_size as usize)?;
+//            ep.initialize(ep_type, max_packet_size, buffer);
+//
+//            Ok(ep.address())
+//        }
+//    }
+}
+
+impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
+    type EndpointOut = EndpointOut;
+    type EndpointIn = EndpointIn;
+    type EndpointAllocator = EndpointAllocator;
+
+    fn create_allocator(&mut self) -> EndpointAllocator {
+        unimplemented!()
     }
 
     fn enable(&mut self) {
@@ -258,7 +310,7 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
         });
     }
 
-    fn reset(&self) {
+    fn reset(&mut self) {
         interrupt::free(|cs| {
             let regs = self.regs.borrow(cs);
 
@@ -268,63 +320,7 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
         });
     }
 
-    fn set_device_address(&self, addr: u8) {
-        interrupt::free(|cs| {
-            let regs = self.regs.borrow(cs);
-
-            modify_reg!(otg_device, regs.device, DCFG, DAD: addr as u32);
-        });
-    }
-
-    fn write(&self, ep_addr: EndpointAddress, buf: &[u8]) -> Result<usize> {
-        if !ep_addr.is_in() || ep_addr.index() >= 4 {
-            return Err(UsbError::InvalidEndpoint);
-        }
-
-        self.endpoints_in[ep_addr.index()].write(buf).map(|_| buf.len())
-    }
-
-    fn read(&self, ep_addr: EndpointAddress, buf: &mut [u8]) -> Result<usize> {
-        if !ep_addr.is_out() || ep_addr.index() >= 4 {
-            return Err(UsbError::InvalidEndpoint);
-        }
-
-        self.endpoints_out[ep_addr.index()].read(buf)
-    }
-
-    fn set_stalled(&self, ep_addr: EndpointAddress, stalled: bool) {
-        if ep_addr.index() >= 4 {
-            return;
-        }
-
-        if ep_addr.is_in() {
-            self.endpoints_in[ep_addr.index()].set_stalled(stalled)
-        } else {
-            self.endpoints_out[ep_addr.index()].set_stalled(stalled)
-        }
-    }
-
-    fn is_stalled(&self, ep_addr: EndpointAddress) -> bool {
-        if ep_addr.index() >= 4 {
-            return true;
-        }
-
-        if ep_addr.is_in() {
-            self.endpoints_in[ep_addr.index()].is_stalled()
-        } else {
-            self.endpoints_out[ep_addr.index()].is_stalled()
-        }
-    }
-
-    fn suspend(&self) {
-        // Nothing to do here?
-    }
-
-    fn resume(&self) {
-        // Nothing to do here?
-    }
-
-    fn poll(&self) -> PollResult {
+    fn poll(&mut self) -> PollResult {
         interrupt::free(|cs| {
             let regs = self.regs.borrow(cs);
 
@@ -371,7 +367,7 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
                         }
                         0x06 => { // SETUP received
                             // flushing TX if something stuck in control endpoint
-                            let ep = endpoint_in::instance(epnum as usize);
+                            let ep = endpoint_in::instance(epnum as u8);
                             if read_reg!(endpoint_in, ep, DIEPTSIZ, PKTCNT) != 0 {
                                 modify_reg!(otg_global, regs.global, GRSTCTL, TXFNUM: epnum, TXFFLSH: 1);
                                 while read_reg!(otg_global, regs.global, GRSTCTL, TXFFLSH) == 1 {}
@@ -379,7 +375,7 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
                             ep_setup |= 1 << epnum;
                         }
                         0x03 | 0x04 => { // OUT completed | SETUP completed
-                            let ep = endpoint_out::instance(epnum as usize);
+                            let ep = endpoint_out::instance(epnum as u8);
                             modify_reg!(endpoint_out, ep, DOEPCTL, CNAK: 1, EPENA: 1);
                             read_reg!(otg_global, regs.global, GRXSTSP); // pop GRXSTSP
                         }
@@ -404,10 +400,10 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
                 if iep != 0 {
                     for ep in &self.endpoints_in {
                         if ep.is_initialized() {
-                            let ep_regs = endpoint_in::instance(ep.address().index());
+                            let ep_regs = endpoint_in::instance(ep.address().number());
                             if read_reg!(endpoint_in, ep_regs, DIEPINT, XFRC) != 0 {
                                 write_reg!(endpoint_in, ep_regs, DIEPINT, XFRC: 1);
-                                ep_in_complete |= 1 << ep.address().index();
+                                ep_in_complete |= 1 << ep.address().number();
                             }
                         }
                     }
@@ -417,10 +413,10 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
                     if ep.is_initialized() {
                         match ep.buffer_state() {
                             EndpointBufferState::DataOut => {
-                                ep_out |= 1 << ep.address().index();
+                                ep_out |= 1 << ep.address().number();
                             },
                             EndpointBufferState::DataSetup => {
-                                ep_setup |= 1 << ep.address().index();
+                                ep_setup |= 1 << ep.address().number();
                             },
                             EndpointBufferState::Empty => {},
                         }
@@ -434,6 +430,38 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
                 }
             }
         })
+    }
+
+    fn set_device_address(&mut self, addr: u8) {
+        interrupt::free(|cs| {
+            let regs = self.regs.borrow(cs);
+
+            modify_reg!(otg_device, regs.device, DCFG, DAD: addr as u32);
+        });
+    }
+
+    fn set_stalled(&mut self, ep_addr: EndpointAddress, stalled: bool) {
+        if ep_addr.number() >= 4 {
+            return;
+        }
+
+        crate::endpoint::set_stalled(ep_addr, stalled);
+    }
+
+    fn is_stalled(&self, ep_addr: EndpointAddress) -> bool {
+        if ep_addr.number() >= 4 {
+            return true;
+        }
+
+        crate::endpoint::is_stalled(ep_addr)
+    }
+
+    fn suspend(&mut self) {
+        // Nothing to do here?
+    }
+
+    fn resume(&mut self) {
+        // Nothing to do here?
     }
 
     const QUIRK_SET_ADDRESS_BEFORE_STATUS: bool = true;

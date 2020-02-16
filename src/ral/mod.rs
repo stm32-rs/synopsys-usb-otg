@@ -98,7 +98,7 @@ pub mod endpoint_in {
     }
 
     #[inline(always)]
-    pub fn instance(index: usize) -> Instance {
+    pub fn instance(index: u8) -> Instance {
         #[cfg(feature = "fs")]
         let base_address = 0x5000_0000;
         #[cfg(feature = "hs")]
@@ -206,7 +206,7 @@ pub mod endpoint_out {
     }
 
     #[inline(always)]
-    pub fn instance(index: usize) -> Instance {
+    pub fn instance(index: u8) -> Instance {
         #[cfg(feature = "fs")]
         let base_address = 0x5000_0000;
         #[cfg(feature = "hs")]

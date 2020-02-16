@@ -87,73 +87,80 @@ impl Endpoint {
                 other => panic!("Unsupported EP0 size: {}", other),
             };
 
-            if self.address.is_in() {
-                let regs = endpoint_in::instance(self.address.index());
-
-                write_reg!(endpoint_in, regs, DIEPCTL, MPSIZ: mpsiz as u32, SNAK: 1);
-
-                write_reg!(endpoint_in, regs, DIEPTSIZ, PKTCNT: 0, XFRSIZ: self.max_packet_size as u32);
-            } else {
-                let regs = endpoint0_out::instance();
-                write_reg!(endpoint0_out, regs, DOEPTSIZ0, STUPCNT: 1, PKTCNT: 1, XFRSIZ: self.max_packet_size as u32);
-                modify_reg!(endpoint0_out, regs, DOEPCTL0, MPSIZ: mpsiz as u32, EPENA: 1, CNAK: 1);
+            match self.address.direction() {
+                UsbDirection::Out => {
+                    let regs = endpoint0_out::instance();
+                    write_reg!(endpoint0_out, regs, DOEPTSIZ0, STUPCNT: 1, PKTCNT: 1, XFRSIZ: self.max_packet_size as u32);
+                    modify_reg!(endpoint0_out, regs, DOEPCTL0, MPSIZ: mpsiz as u32, EPENA: 1, CNAK: 1);
+                },
+                UsbDirection::In => {
+                    let regs = endpoint_in::instance(self.address.index());
+                    write_reg!(endpoint_in, regs, DIEPCTL, MPSIZ: mpsiz as u32, SNAK: 1);
+                    write_reg!(endpoint_in, regs, DIEPTSIZ, PKTCNT: 0, XFRSIZ: self.max_packet_size as u32);
+                },
             }
         } else {
-            if self.address.is_in() {
-                let regs = endpoint_in::instance(self.address.index());
-                write_reg!(endpoint_in, regs, DIEPCTL,
-                    SNAK: 1,
-                    USBAEP: 1,
-                    EPTYP: self.ep_type.unwrap() as u32,
-                    SD0PID_SEVNFRM: 1,
-                    TXFNUM: self.address.index() as u32,
-                    MPSIZ: self.max_packet_size as u32
-                );
-            } else {
-                let regs = endpoint_out::instance(self.address.index());
-                write_reg!(endpoint_out, regs, DOEPCTL,
-                    SD0PID_SEVNFRM: 1,
-                    CNAK: 1,
-                    EPENA: 1,
-                    USBAEP: 1,
-                    EPTYP: self.ep_type.unwrap() as u32,
-                    MPSIZ: self.max_packet_size as u32
-                );
+            match self.address.direction() {
+                UsbDirection::Out => {
+                    let regs = endpoint_out::instance(self.address.index());
+                    write_reg!(endpoint_out, regs, DOEPCTL,
+                        SD0PID_SEVNFRM: 1,
+                        CNAK: 1,
+                        EPENA: 1,
+                        USBAEP: 1,
+                        EPTYP: self.ep_type.unwrap() as u32,
+                        MPSIZ: self.max_packet_size as u32
+                    );
+                },
+                UsbDirection::In => {
+                    let regs = endpoint_in::instance(self.address.index());
+                    write_reg!(endpoint_in, regs, DIEPCTL,
+                        SNAK: 1,
+                        USBAEP: 1,
+                        EPTYP: self.ep_type.unwrap() as u32,
+                        SD0PID_SEVNFRM: 1,
+                        TXFNUM: self.address.index() as u32,
+                        MPSIZ: self.max_packet_size as u32
+                    );
+                },
             }
         }
     }
 
     pub fn deconfigure(&self, _cs: &CriticalSection) {
-        if self.address.is_in() {
-            let regs = endpoint_in::instance(self.address.index());
+        match self.address.direction() {
+            UsbDirection::Out => {
+                let regs = endpoint_out::instance(self.address.index());
 
-            // deactivating endpoint
-            modify_reg!(endpoint_in, regs, DIEPCTL, USBAEP: 0);
+                // deactivating endpoint
+                modify_reg!(endpoint_out, regs, DOEPCTL, USBAEP: 0);
 
-            // TODO: flushing FIFO
+                // disabling endpoint
+                if read_reg!(endpoint_out, regs, DOEPCTL, EPENA) != 0 && self.address.index() != 0 {
+                    modify_reg!(endpoint_out, regs, DOEPCTL, EPDIS: 1)
+                }
 
-            // disabling endpoint
-            if read_reg!(endpoint_in, regs, DIEPCTL, EPENA) != 0 && self.address.index() != 0 {
-                modify_reg!(endpoint_in, regs, DIEPCTL, EPDIS: 1)
-            }
+                // clean EP interrupts
+                write_reg!(endpoint_out, regs, DOEPINT, 0xff);
+            },
+            UsbDirection::In => {
+                let regs = endpoint_in::instance(self.address.index());
 
-            // clean EP interrupts
-            write_reg!(endpoint_in, regs, DIEPINT, 0xff);
+                // deactivating endpoint
+                modify_reg!(endpoint_in, regs, DIEPCTL, USBAEP: 0);
 
-            // TODO: deconfiguring TX FIFO
-        } else {
-            let regs = endpoint_out::instance(self.address.index());
+                // TODO: flushing FIFO
 
-            // deactivating endpoint
-            modify_reg!(endpoint_out, regs, DOEPCTL, USBAEP: 0);
+                // disabling endpoint
+                if read_reg!(endpoint_in, regs, DIEPCTL, EPENA) != 0 && self.address.index() != 0 {
+                    modify_reg!(endpoint_in, regs, DIEPCTL, EPDIS: 1)
+                }
 
-            // disabling endpoint
-            if read_reg!(endpoint_out, regs, DOEPCTL, EPENA) != 0 && self.address.index() != 0 {
-                modify_reg!(endpoint_out, regs, DOEPCTL, EPDIS: 1)
-            }
+                // clean EP interrupts
+                write_reg!(endpoint_in, regs, DIEPINT, 0xff);
 
-            // clean EP interrupts
-            write_reg!(endpoint_out, regs, DOEPINT, 0xff);
+                // TODO: deconfiguring TX FIFO
+            },
         }
     }
 }

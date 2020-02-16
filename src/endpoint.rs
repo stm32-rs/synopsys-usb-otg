@@ -77,56 +77,6 @@ impl Endpoint {
         is_stalled(self.address)
     }
 
-    pub fn configure(&self, _cs: &CriticalSection) {
-        if self.address.index() == 0 {
-            let mpsiz = match self.max_packet_size {
-                8 => 0b11,
-                16 => 0b10,
-                32 => 0b01,
-                64 => 0b00,
-                other => panic!("Unsupported EP0 size: {}", other),
-            };
-
-            match self.address.direction() {
-                UsbDirection::Out => {
-                    let regs = endpoint0_out::instance();
-                    write_reg!(endpoint0_out, regs, DOEPTSIZ0, STUPCNT: 1, PKTCNT: 1, XFRSIZ: self.max_packet_size as u32);
-                    modify_reg!(endpoint0_out, regs, DOEPCTL0, MPSIZ: mpsiz as u32, EPENA: 1, CNAK: 1);
-                },
-                UsbDirection::In => {
-                    let regs = endpoint_in::instance(self.address.index());
-                    write_reg!(endpoint_in, regs, DIEPCTL, MPSIZ: mpsiz as u32, SNAK: 1);
-                    write_reg!(endpoint_in, regs, DIEPTSIZ, PKTCNT: 0, XFRSIZ: self.max_packet_size as u32);
-                },
-            }
-        } else {
-            match self.address.direction() {
-                UsbDirection::Out => {
-                    let regs = endpoint_out::instance(self.address.index());
-                    write_reg!(endpoint_out, regs, DOEPCTL,
-                        SD0PID_SEVNFRM: 1,
-                        CNAK: 1,
-                        EPENA: 1,
-                        USBAEP: 1,
-                        EPTYP: self.ep_type.unwrap() as u32,
-                        MPSIZ: self.max_packet_size as u32
-                    );
-                },
-                UsbDirection::In => {
-                    let regs = endpoint_in::instance(self.address.index());
-                    write_reg!(endpoint_in, regs, DIEPCTL,
-                        SNAK: 1,
-                        USBAEP: 1,
-                        EPTYP: self.ep_type.unwrap() as u32,
-                        SD0PID_SEVNFRM: 1,
-                        TXFNUM: self.address.index() as u32,
-                        MPSIZ: self.max_packet_size as u32
-                    );
-                },
-            }
-        }
-    }
-
     pub fn deconfigure(&self, _cs: &CriticalSection) {
         match self.address.direction() {
             UsbDirection::Out => {
@@ -174,6 +124,32 @@ impl EndpointIn {
     pub fn new(address: EndpointAddress) -> EndpointIn {
         EndpointIn {
             common: Endpoint::new(address),
+        }
+    }
+
+    pub fn configure(&self, _cs: &CriticalSection) {
+        if self.address.index() == 0 {
+            let mpsiz = match self.max_packet_size {
+                8 => 0b11,
+                16 => 0b10,
+                32 => 0b01,
+                64 => 0b00,
+                other => panic!("Unsupported EP0 size: {}", other),
+            };
+
+            let regs = endpoint_in::instance(self.address.index());
+            write_reg!(endpoint_in, regs, DIEPCTL, MPSIZ: mpsiz as u32, SNAK: 1);
+            write_reg!(endpoint_in, regs, DIEPTSIZ, PKTCNT: 0, XFRSIZ: self.max_packet_size as u32);
+        } else {
+            let regs = endpoint_in::instance(self.address.index());
+            write_reg!(endpoint_in, regs, DIEPCTL,
+                SNAK: 1,
+                USBAEP: 1,
+                EPTYP: self.ep_type.unwrap() as u32,
+                SD0PID_SEVNFRM: 1,
+                TXFNUM: self.address.index() as u32,
+                MPSIZ: self.max_packet_size as u32
+            );
         }
     }
 
@@ -238,6 +214,32 @@ impl EndpointOut {
         interrupt::free(|cs| {
             self.buffer.borrow(cs).replace(buffer);
         });
+    }
+
+    pub fn configure(&self, _cs: &CriticalSection) {
+        if self.address.index() == 0 {
+            let mpsiz = match self.max_packet_size {
+                8 => 0b11,
+                16 => 0b10,
+                32 => 0b01,
+                64 => 0b00,
+                other => panic!("Unsupported EP0 size: {}", other),
+            };
+
+            let regs = endpoint0_out::instance();
+            write_reg!(endpoint0_out, regs, DOEPTSIZ0, STUPCNT: 1, PKTCNT: 1, XFRSIZ: self.max_packet_size as u32);
+            modify_reg!(endpoint0_out, regs, DOEPCTL0, MPSIZ: mpsiz as u32, EPENA: 1, CNAK: 1);
+        } else {
+            let regs = endpoint_out::instance(self.address.index());
+            write_reg!(endpoint_out, regs, DOEPCTL,
+                SD0PID_SEVNFRM: 1,
+                CNAK: 1,
+                EPENA: 1,
+                USBAEP: 1,
+                EPTYP: self.ep_type.unwrap() as u32,
+                MPSIZ: self.max_packet_size as u32
+            );
+        }
     }
 
     pub fn read(&self, buf: &mut [u8]) -> Result<usize> {

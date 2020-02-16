@@ -65,17 +65,6 @@ impl Endpoint {
         self.ep_type = Some(ep_type);
         self.max_packet_size = max_packet_size;
     }
-
-    pub fn set_stalled(&self, stalled: bool) {
-        if !self.is_initialized() {
-            return;
-        }
-        set_stalled(self.address, stalled)
-    }
-
-    pub fn is_stalled(&self) -> bool {
-        is_stalled(self.address)
-    }
 }
 
 

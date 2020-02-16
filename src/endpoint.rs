@@ -76,43 +76,6 @@ impl Endpoint {
     pub fn is_stalled(&self) -> bool {
         is_stalled(self.address)
     }
-
-    pub fn deconfigure(&self, _cs: &CriticalSection) {
-        match self.address.direction() {
-            UsbDirection::Out => {
-                let regs = endpoint_out::instance(self.address.index());
-
-                // deactivating endpoint
-                modify_reg!(endpoint_out, regs, DOEPCTL, USBAEP: 0);
-
-                // disabling endpoint
-                if read_reg!(endpoint_out, regs, DOEPCTL, EPENA) != 0 && self.address.index() != 0 {
-                    modify_reg!(endpoint_out, regs, DOEPCTL, EPDIS: 1)
-                }
-
-                // clean EP interrupts
-                write_reg!(endpoint_out, regs, DOEPINT, 0xff);
-            },
-            UsbDirection::In => {
-                let regs = endpoint_in::instance(self.address.index());
-
-                // deactivating endpoint
-                modify_reg!(endpoint_in, regs, DIEPCTL, USBAEP: 0);
-
-                // TODO: flushing FIFO
-
-                // disabling endpoint
-                if read_reg!(endpoint_in, regs, DIEPCTL, EPENA) != 0 && self.address.index() != 0 {
-                    modify_reg!(endpoint_in, regs, DIEPCTL, EPDIS: 1)
-                }
-
-                // clean EP interrupts
-                write_reg!(endpoint_in, regs, DIEPINT, 0xff);
-
-                // TODO: deconfiguring TX FIFO
-            },
-        }
-    }
 }
 
 
@@ -151,6 +114,25 @@ impl EndpointIn {
                 MPSIZ: self.max_packet_size as u32
             );
         }
+    }
+
+    pub fn deconfigure(&self, _cs: &CriticalSection) {
+        let regs = endpoint_in::instance(self.address.index());
+
+        // deactivating endpoint
+        modify_reg!(endpoint_in, regs, DIEPCTL, USBAEP: 0);
+
+        // TODO: flushing FIFO
+
+        // disabling endpoint
+        if read_reg!(endpoint_in, regs, DIEPCTL, EPENA) != 0 && self.address.index() != 0 {
+            modify_reg!(endpoint_in, regs, DIEPCTL, EPDIS: 1)
+        }
+
+        // clean EP interrupts
+        write_reg!(endpoint_in, regs, DIEPINT, 0xff);
+
+        // TODO: deconfiguring TX FIFO
     }
 
     pub fn write(&self, buf: &[u8]) -> Result<()> {
@@ -240,6 +222,21 @@ impl EndpointOut {
                 MPSIZ: self.max_packet_size as u32
             );
         }
+    }
+
+    pub fn deconfigure(&self, _cs: &CriticalSection) {
+        let regs = endpoint_out::instance(self.address.index());
+
+        // deactivating endpoint
+        modify_reg!(endpoint_out, regs, DOEPCTL, USBAEP: 0);
+
+        // disabling endpoint
+        if read_reg!(endpoint_out, regs, DOEPCTL, EPENA) != 0 && self.address.index() != 0 {
+            modify_reg!(endpoint_out, regs, DOEPCTL, EPDIS: 1)
+        }
+
+        // clean EP interrupts
+        write_reg!(endpoint_out, regs, DOEPINT, 0xff);
     }
 
     pub fn read(&self, buf: &mut [u8]) -> Result<usize> {

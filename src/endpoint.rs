@@ -1,4 +1,4 @@
-use usb_device::{Result, UsbError};
+use usb_device::{Result, UsbError, UsbDirection};
 use usb_device::endpoint::{EndpointType, EndpointAddress};
 use crate::endpoint_memory::{EndpointBuffer, EndpointBufferState};
 use crate::ral::{read_reg, write_reg, modify_reg, endpoint_in, endpoint_out, endpoint0_out};
@@ -6,6 +6,35 @@ use crate::target::fifo_write;
 use crate::target::interrupt::{self, CriticalSection, Mutex};
 use core::ops::{Deref, DerefMut};
 use core::cell::RefCell;
+
+pub fn set_stalled(address: EndpointAddress, stalled: bool) {
+    interrupt::free(|_| {
+        match address.direction() {
+            UsbDirection::Out => {
+                let ep = endpoint_out::instance(address.index());
+                modify_reg!(endpoint_out, ep, DOEPCTL, STALL: stalled as u32);
+            },
+            UsbDirection::In => {
+                let ep = endpoint_in::instance(address.index());
+                modify_reg!(endpoint_in, ep, DIEPCTL, STALL: stalled as u32);
+            },
+        }
+    })
+}
+
+pub fn is_stalled(address: EndpointAddress) -> bool {
+    let stall = match address.direction() {
+        UsbDirection::Out => {
+            let ep = endpoint_out::instance(address.index());
+            read_reg!(endpoint_out, ep, DOEPCTL, STALL)
+        },
+        UsbDirection::In => {
+            let ep = endpoint_in::instance(address.index());
+            read_reg!(endpoint_in, ep, DIEPCTL, STALL)
+        },
+    };
+    stall != 0
+}
 
 /// Arbitrates access to the endpoint-specific registers and packet buffer memory.
 pub struct Endpoint {
@@ -41,30 +70,11 @@ impl Endpoint {
         if !self.is_initialized() {
             return;
         }
-        interrupt::free(|_| {
-            if self.is_stalled() == stalled {
-                return
-            }
-
-            if self.address.is_in() {
-                let ep = endpoint_in::instance(self.address.index());
-                modify_reg!(endpoint_in, ep, DIEPCTL, STALL: stalled as u32);
-            } else {
-                let ep = endpoint_out::instance(self.address.index());
-                modify_reg!(endpoint_out, ep, DOEPCTL, STALL: stalled as u32);
-            }
-        })
+        set_stalled(self.address, stalled)
     }
 
     pub fn is_stalled(&self) -> bool {
-        let stall = if self.address.is_in() {
-            let ep = endpoint_in::instance(self.address.index());
-            read_reg!(endpoint_in, ep, DIEPCTL, STALL)
-        } else {
-            let ep = endpoint_out::instance(self.address.index());
-            read_reg!(endpoint_out, ep, DOEPCTL, STALL)
-        };
-        stall != 0
+        is_stalled(self.address)
     }
 
     pub fn configure(&self, _cs: &CriticalSection) {

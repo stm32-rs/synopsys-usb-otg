@@ -297,11 +297,7 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
             return;
         }
 
-        if ep_addr.is_in() {
-            self.endpoints_in[ep_addr.index()].set_stalled(stalled)
-        } else {
-            self.endpoints_out[ep_addr.index()].set_stalled(stalled)
-        }
+        crate::endpoint::set_stalled(ep_addr, stalled)
     }
 
     fn is_stalled(&self, ep_addr: EndpointAddress) -> bool {
@@ -309,11 +305,7 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
             return true;
         }
 
-        if ep_addr.is_in() {
-            self.endpoints_in[ep_addr.index()].is_stalled()
-        } else {
-            self.endpoints_out[ep_addr.index()].is_stalled()
-        }
+        crate::endpoint::is_stalled(ep_addr)
     }
 
     fn suspend(&self) {

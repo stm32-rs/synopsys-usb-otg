@@ -12,11 +12,11 @@ pub fn set_stalled(address: EndpointAddress, stalled: bool) {
     interrupt::free(|_| {
         match address.direction() {
             UsbDirection::Out => {
-                let ep = endpoint_out::instance(address.index());
+                let ep = endpoint_out::instance(address.index() as u8);
                 modify_reg!(endpoint_out, ep, DOEPCTL, STALL: stalled as u32);
             },
             UsbDirection::In => {
-                let ep = endpoint_in::instance(address.index());
+                let ep = endpoint_in::instance(address.index() as u8);
                 modify_reg!(endpoint_in, ep, DIEPCTL, STALL: stalled as u32);
             },
         }
@@ -26,11 +26,11 @@ pub fn set_stalled(address: EndpointAddress, stalled: bool) {
 pub fn is_stalled(address: EndpointAddress) -> bool {
     let stall = match address.direction() {
         UsbDirection::Out => {
-            let ep = endpoint_out::instance(address.index());
+            let ep = endpoint_out::instance(address.index() as u8);
             read_reg!(endpoint_out, ep, DOEPCTL, STALL)
         },
         UsbDirection::In => {
-            let ep = endpoint_in::instance(address.index());
+            let ep = endpoint_in::instance(address.index() as u8);
             read_reg!(endpoint_in, ep, DIEPCTL, STALL)
         },
     };
@@ -47,9 +47,13 @@ impl Endpoint {
         Endpoint { descriptor }
     }
 
-    #[inline(always)]
     pub fn address(&self) -> EndpointAddress {
         self.descriptor.address
+    }
+
+    #[inline(always)]
+    fn index(&self) -> u8 {
+        self.descriptor.address.index() as u8
     }
 }
 
@@ -66,7 +70,7 @@ impl EndpointIn {
     }
 
     pub fn configure(&self, _cs: &CriticalSection) {
-        if self.address().index() == 0 {
+        if self.index() == 0 {
             let mpsiz = match self.descriptor.max_packet_size {
                 8 => 0b11,
                 16 => 0b10,
@@ -75,24 +79,24 @@ impl EndpointIn {
                 other => panic!("Unsupported EP0 size: {}", other),
             };
 
-            let regs = endpoint_in::instance(self.address().index());
+            let regs = endpoint_in::instance(self.index());
             write_reg!(endpoint_in, regs, DIEPCTL, MPSIZ: mpsiz as u32, SNAK: 1);
             write_reg!(endpoint_in, regs, DIEPTSIZ, PKTCNT: 0, XFRSIZ: self.descriptor.max_packet_size as u32);
         } else {
-            let regs = endpoint_in::instance(self.address().index());
+            let regs = endpoint_in::instance(self.index());
             write_reg!(endpoint_in, regs, DIEPCTL,
                 SNAK: 1,
                 USBAEP: 1,
                 EPTYP: self.descriptor.ep_type as u32,
                 SD0PID_SEVNFRM: 1,
-                TXFNUM: self.address().index() as u32,
+                TXFNUM: self.index() as u32,
                 MPSIZ: self.descriptor.max_packet_size as u32
             );
         }
     }
 
     pub fn deconfigure(&self, _cs: &CriticalSection) {
-        let regs = endpoint_in::instance(self.address().index());
+        let regs = endpoint_in::instance(self.index());
 
         // deactivating endpoint
         modify_reg!(endpoint_in, regs, DIEPCTL, USBAEP: 0);
@@ -100,7 +104,7 @@ impl EndpointIn {
         // TODO: flushing FIFO
 
         // disabling endpoint
-        if read_reg!(endpoint_in, regs, DIEPCTL, EPENA) != 0 && self.address().index() != 0 {
+        if read_reg!(endpoint_in, regs, DIEPCTL, EPENA) != 0 && self.index() != 0 {
             modify_reg!(endpoint_in, regs, DIEPCTL, EPDIS: 1)
         }
 
@@ -111,8 +115,8 @@ impl EndpointIn {
     }
 
     pub fn write(&self, buf: &[u8]) -> Result<()> {
-        let ep = endpoint_in::instance(self.address().index());
-        if self.address().index() != 0 && read_reg!(endpoint_in, ep, DIEPCTL, EPENA) != 0{
+        let ep = endpoint_in::instance(self.index());
+        if self.index() != 0 && read_reg!(endpoint_in, ep, DIEPCTL, EPENA) != 0{
             return Err(UsbError::WouldBlock);
         }
 
@@ -135,7 +139,7 @@ impl EndpointIn {
 
         modify_reg!(endpoint_in, ep, DIEPCTL, CNAK: 1, EPENA: 1);
 
-        fifo_write(self.address().index(), buf);
+        fifo_write(self.index(), buf);
 
         Ok(())
     }
@@ -161,7 +165,7 @@ impl EndpointOut {
     }
 
     pub fn configure(&self, _cs: &CriticalSection) {
-        if self.address().index() == 0 {
+        if self.index() == 0 {
             let mpsiz = match self.descriptor.max_packet_size {
                 8 => 0b11,
                 16 => 0b10,
@@ -174,7 +178,7 @@ impl EndpointOut {
             write_reg!(endpoint0_out, regs, DOEPTSIZ0, STUPCNT: 1, PKTCNT: 1, XFRSIZ: self.descriptor.max_packet_size as u32);
             modify_reg!(endpoint0_out, regs, DOEPCTL0, MPSIZ: mpsiz as u32, EPENA: 1, CNAK: 1);
         } else {
-            let regs = endpoint_out::instance(self.address().index());
+            let regs = endpoint_out::instance(self.index());
             write_reg!(endpoint_out, regs, DOEPCTL,
                 SD0PID_SEVNFRM: 1,
                 CNAK: 1,
@@ -187,13 +191,13 @@ impl EndpointOut {
     }
 
     pub fn deconfigure(&self, _cs: &CriticalSection) {
-        let regs = endpoint_out::instance(self.address().index());
+        let regs = endpoint_out::instance(self.index());
 
         // deactivating endpoint
         modify_reg!(endpoint_out, regs, DOEPCTL, USBAEP: 0);
 
         // disabling endpoint
-        if read_reg!(endpoint_out, regs, DOEPCTL, EPENA) != 0 && self.address().index() != 0 {
+        if read_reg!(endpoint_out, regs, DOEPCTL, EPENA) != 0 && self.index() != 0 {
             modify_reg!(endpoint_out, regs, DOEPCTL, EPDIS: 1)
         }
 

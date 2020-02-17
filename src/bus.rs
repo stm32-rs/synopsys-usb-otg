@@ -429,7 +429,7 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
                         }
                         0x06 => { // SETUP received
                             // flushing TX if something stuck in control endpoint
-                            let ep = endpoint_in::instance(epnum as usize);
+                            let ep = endpoint_in::instance(epnum as u8);
                             if read_reg!(endpoint_in, ep, DIEPTSIZ, PKTCNT) != 0 {
                                 modify_reg!(otg_global, regs.global, GRSTCTL, TXFNUM: epnum, TXFFLSH: 1);
                                 while read_reg!(otg_global, regs.global, GRSTCTL, TXFFLSH) == 1 {}
@@ -437,7 +437,7 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
                             ep_setup |= 1 << epnum;
                         }
                         0x03 | 0x04 => { // OUT completed | SETUP completed
-                            let ep = endpoint_out::instance(epnum as usize);
+                            let ep = endpoint_out::instance(epnum as u8);
                             modify_reg!(endpoint_out, ep, DOEPCTL, CNAK: 1, EPENA: 1);
                             read_reg!(otg_global, regs.global, GRXSTSP); // pop GRXSTSP
                         }
@@ -462,7 +462,7 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
                 if iep != 0 {
                     for ep in &self.allocator.endpoints_in {
                         if let Some(ep) = ep {
-                            let ep_regs = endpoint_in::instance(ep.address().index());
+                            let ep_regs = endpoint_in::instance(ep.address().index() as u8);
                             if read_reg!(endpoint_in, ep_regs, DIEPINT, XFRC) != 0 {
                                 write_reg!(endpoint_in, ep_regs, DIEPINT, XFRC: 1);
                                 ep_in_complete |= 1 << ep.address().index();

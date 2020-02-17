@@ -205,7 +205,7 @@ impl EndpointAllocator {
     }
 
     fn alloc_out(&mut self, config: &EndpointConfig) -> Result<EndpointOut> {
-        let descr = Self::alloc(&mut self.bitmap_in, config, usb_device_ep::UsbDirection::In)?;
+        let descr = Self::alloc(&mut self.bitmap_out, config, usb_device_ep::UsbDirection::In)?;
 
         // TODO: remove this
         let address = unsafe { core::mem::transmute(descr.address) };

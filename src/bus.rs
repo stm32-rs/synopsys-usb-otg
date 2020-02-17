@@ -1,6 +1,8 @@
 use usb_device::{Result, UsbDirection, UsbError};
 use usb_device::bus::{UsbBusAllocator, PollResult};
 use usb_device::endpoint::{EndpointType, EndpointAddress};
+use usb_device_ep::allocator::EndpointConfig;
+use usb_device_ep::endpoint::EndpointDescriptor;
 use crate::ral::{read_reg, write_reg, modify_reg, otg_global, otg_device, otg_pwrclk};
 
 use crate::target::UsbRegisters;
@@ -140,6 +142,127 @@ impl<USB: UsbPeripheral> UsbBus<USB> {
 
         for ep in &self.endpoints_out {
             ep.deconfigure(cs);
+        }
+    }
+}
+
+pub struct EndpointAllocator {
+    bitmap_in: u8,
+    bitmap_out: u8,
+    endpoints_in: [Option<EndpointIn>; 4],
+    endpoints_out: [Option<EndpointOut>; 4],
+    memory_allocator: EndpointMemoryAllocator,
+}
+
+impl EndpointAllocator {
+    const ENDPOINT_COUNT: u8 = 4;
+
+    fn new(memory: &'static mut [u32]) -> Self {
+        Self {
+            bitmap_in: 0,
+            bitmap_out: 0,
+            // [None; 4] requires Copy
+            endpoints_in: [None, None, None, None],
+            endpoints_out: [None, None, None, None],
+            memory_allocator: EndpointMemoryAllocator::new(memory),
+        }
+    }
+
+    fn alloc_number(bitmap: &mut u8, number: Option<u8>) -> Result<u8> {
+        if let Some(number) = number {
+            if number >= Self::ENDPOINT_COUNT {
+                return Err(UsbError::InvalidEndpoint);
+            }
+            if *bitmap & (1 << number) == 0 {
+                *bitmap |= (1 << number);
+                Ok(number)
+            } else {
+                Err(UsbError::InvalidEndpoint)
+            }
+        } else {
+            // Skip EP0
+            for number in 1..Self::ENDPOINT_COUNT {
+                if *bitmap & (1 << number) == 0 {
+                    *bitmap |= (1 << number);
+                    return Ok(number)
+                }
+            }
+            Err(UsbError::EndpointOverflow)
+        }
+    }
+
+    fn alloc(bitmap: &mut u8, config: &EndpointConfig, direction: usb_device_ep::UsbDirection) -> Result<EndpointDescriptor> {
+        let number = Self::alloc_number(bitmap, config.number)?;
+        let address = usb_device_ep::endpoint::EndpointAddress::from_parts(number, direction);
+        Ok(EndpointDescriptor {
+            address,
+            ep_type: config.ep_type,
+            max_packet_size: config.max_packet_size,
+            interval: config.interval
+        })
+    }
+
+    fn alloc_in(&mut self, config: &EndpointConfig) -> Result<EndpointIn> {
+        let descr = Self::alloc(&mut self.bitmap_in, config, usb_device_ep::UsbDirection::In)?;
+
+        // TODO: remove this
+        let address = unsafe { core::mem::transmute(descr.address) };
+        let ep_type = unsafe { core::mem::transmute(descr.ep_type) };
+
+        let mut ep = EndpointIn::new(address);
+        ep.initialize(ep_type, descr.max_packet_size);
+
+        self.memory_allocator.allocate_tx_buffer(ep.address().index() as u8, descr.max_packet_size as usize)?;
+
+        Ok(ep)
+    }
+
+    fn alloc_out(&mut self, config: &EndpointConfig) -> Result<EndpointOut> {
+        let descr = Self::alloc(&mut self.bitmap_in, config, usb_device_ep::UsbDirection::In)?;
+
+        // TODO: remove this
+        let address = unsafe { core::mem::transmute(descr.address) };
+        let ep_type = unsafe { core::mem::transmute(descr.ep_type) };
+
+        let mut ep = EndpointOut::new(address);
+
+        let buffer = self.memory_allocator.allocate_rx_buffer(descr.max_packet_size as usize)?;
+        ep.initialize(ep_type, descr.max_packet_size, buffer);
+
+        Ok(ep)
+    }
+
+    fn alloc_ep(
+        &mut self,
+        ep_dir: UsbDirection,
+        ep_addr: Option<EndpointAddress>,
+        ep_type: EndpointType,
+        max_packet_size: u16,
+        interval: u8) -> Result<EndpointAddress>
+    {
+        let ep_type = unsafe { core::mem::transmute(ep_type) };
+        let number = ep_addr.map(|a| a.index() as u8);
+
+        let config = EndpointConfig {
+            ep_type,
+            max_packet_size,
+            interval,
+            number,
+            pair_of: None
+        };
+        match ep_dir {
+            UsbDirection::Out => {
+                let ep = self.alloc_out(&config)?;
+                let address = ep.address();
+                self.endpoints_out[address.index()] = Some(ep);
+                Ok(address)
+            },
+            UsbDirection::In => {
+                let ep = self.alloc_in(&config)?;
+                let address = ep.address();
+                self.endpoints_in[address.index()] = Some(ep);
+                Ok(address)
+            },
         }
     }
 }

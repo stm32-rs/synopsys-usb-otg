@@ -1,8 +1,7 @@
 use usb_device::{Result, UsbDirection, UsbError};
 use usb_device::bus::{UsbBusAllocator, PollResult};
 use usb_device::endpoint::{EndpointType, EndpointAddress};
-use usb_device_ep::allocator::EndpointConfig;
-use usb_device_ep::endpoint::EndpointDescriptor;
+use crate::transition::{EndpointConfig, EndpointDescriptor};
 use crate::ral::{read_reg, write_reg, modify_reg, otg_global, otg_device, otg_pwrclk};
 
 use crate::target::UsbRegisters;
@@ -178,9 +177,9 @@ impl EndpointAllocator {
         }
     }
 
-    fn alloc(bitmap: &mut u8, config: &EndpointConfig, direction: usb_device_ep::UsbDirection) -> Result<EndpointDescriptor> {
+    fn alloc(bitmap: &mut u8, config: &EndpointConfig, direction: UsbDirection) -> Result<EndpointDescriptor> {
         let number = Self::alloc_number(bitmap, config.number)?;
-        let address = usb_device_ep::endpoint::EndpointAddress::from_parts(number, direction);
+        let address = EndpointAddress::from_parts(number as usize, direction);
         Ok(EndpointDescriptor {
             address,
             ep_type: config.ep_type,
@@ -190,14 +189,10 @@ impl EndpointAllocator {
     }
 
     fn alloc_in(&mut self, config: &EndpointConfig) -> Result<EndpointIn> {
-        let descr = Self::alloc(&mut self.bitmap_in, config, usb_device_ep::UsbDirection::In)?;
+        let descr = Self::alloc(&mut self.bitmap_in, config, UsbDirection::In)?;
 
-        // TODO: remove this
-        let address = unsafe { core::mem::transmute(descr.address) };
-        let ep_type = unsafe { core::mem::transmute(descr.ep_type) };
-
-        let mut ep = EndpointIn::new(address);
-        ep.initialize(ep_type, descr.max_packet_size);
+        let mut ep = EndpointIn::new(descr.address);
+        ep.initialize(descr.ep_type, descr.max_packet_size);
 
         self.memory_allocator.allocate_tx_buffer(ep.address().index() as u8, descr.max_packet_size as usize)?;
 
@@ -205,16 +200,12 @@ impl EndpointAllocator {
     }
 
     fn alloc_out(&mut self, config: &EndpointConfig) -> Result<EndpointOut> {
-        let descr = Self::alloc(&mut self.bitmap_out, config, usb_device_ep::UsbDirection::In)?;
+        let descr = Self::alloc(&mut self.bitmap_out, config, UsbDirection::In)?;
 
-        // TODO: remove this
-        let address = unsafe { core::mem::transmute(descr.address) };
-        let ep_type = unsafe { core::mem::transmute(descr.ep_type) };
-
-        let mut ep = EndpointOut::new(address);
+        let mut ep = EndpointOut::new(descr.address);
 
         let buffer = self.memory_allocator.allocate_rx_buffer(descr.max_packet_size as usize)?;
-        ep.initialize(ep_type, descr.max_packet_size, buffer);
+        ep.initialize(descr.ep_type, descr.max_packet_size, buffer);
 
         Ok(ep)
     }

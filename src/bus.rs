@@ -8,7 +8,6 @@ use crate::target::interrupt::{self, Mutex, CriticalSection};
 use crate::endpoint::{EndpointIn, EndpointOut, Endpoint};
 use crate::endpoint_memory::{EndpointMemoryAllocator, EndpointBufferState};
 use core::ops::Deref;
-use core::cmp;
 use crate::UsbPeripheral;
 
 /// USB peripheral driver for STM32 microcontrollers.
@@ -63,7 +62,7 @@ impl<USB: UsbPeripheral> UsbBus<USB> {
         let mut fifo_top = rx_fifo_size;
 
         // Tx FIFO #0
-        let fifo_size = cmp::max(self.endpoints_in[0].fifo_size_words(), 16);
+        let fifo_size = self.endpoint_allocator.tx_fifo_size_words(0) as u32;
 
         #[cfg(feature = "fs")]
         write_reg!(otg_global, regs.global, DIEPTXF0,
@@ -79,7 +78,7 @@ impl<USB: UsbPeripheral> UsbBus<USB> {
         fifo_top += fifo_size;
 
         // Tx FIFO #1
-        let fifo_size = cmp::max(self.endpoints_in[1].fifo_size_words(), 16);
+        let fifo_size = self.endpoint_allocator.tx_fifo_size_words(1) as u32;
         write_reg!(otg_global, regs.global, DIEPTXF1,
             INEPTXFD: fifo_size,
             INEPTXSA: fifo_top
@@ -87,7 +86,7 @@ impl<USB: UsbPeripheral> UsbBus<USB> {
         fifo_top += fifo_size;
 
         // Tx FIFO #2
-        let fifo_size = cmp::max(self.endpoints_in[2].fifo_size_words(), 16);
+        let fifo_size = self.endpoint_allocator.tx_fifo_size_words(2) as u32;
         write_reg!(otg_global, regs.global, DIEPTXF2,
             INEPTXFD: fifo_size,
             INEPTXSA: fifo_top
@@ -95,7 +94,7 @@ impl<USB: UsbPeripheral> UsbBus<USB> {
         fifo_top += fifo_size;
 
         // Tx FIFO #3
-        let fifo_size = cmp::max(self.endpoints_in[3].fifo_size_words(), 16);
+        let fifo_size = self.endpoint_allocator.tx_fifo_size_words(3) as u32;
         write_reg!(otg_global, regs.global, DIEPTXF3,
             INEPTXFD: fifo_size,
             INEPTXSA: fifo_top
@@ -183,6 +182,8 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
         if ep_dir == UsbDirection::In {
             let ep = find_free_endpoint(&mut self.endpoints_in, ep_addr)?;
             ep.initialize(ep_type, max_packet_size);
+
+            self.endpoint_allocator.allocate_tx_buffer(ep.address().index() as u8, max_packet_size as usize)?;
 
             Ok(ep.address())
         } else {

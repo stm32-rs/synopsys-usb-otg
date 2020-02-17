@@ -3,6 +3,7 @@ use core::{slice, mem};
 use vcell::VolatileCell;
 use crate::target::fifo_read_into;
 use usb_device::{Result, UsbError};
+use crate::ral::otg_fifo::FIFO_DEPTH_WORDS;
 
 #[derive(Eq, PartialEq)]
 pub enum EndpointBufferState {
@@ -109,6 +110,7 @@ pub struct EndpointMemoryAllocator {
     next_free_offset: usize,
     max_size_words: usize,
     memory: &'static mut [u32],
+    tx_fifo_size_words: [u16; 4],
 }
 
 impl EndpointMemoryAllocator {
@@ -116,7 +118,8 @@ impl EndpointMemoryAllocator {
         Self {
             next_free_offset: 0,
             max_size_words: 0,
-            memory
+            memory,
+            tx_fifo_size_words: [0; 4],
         }
     }
 
@@ -138,9 +141,40 @@ impl EndpointMemoryAllocator {
         Ok(EndpointBuffer::new(buffer))
     }
 
+    pub fn allocate_tx_buffer(&mut self, ep_number: u8, size: usize) -> Result<()> {
+        let ep_number = ep_number as usize;
+        assert!(ep_number < self.tx_fifo_size_words.len());
+
+        if self.tx_fifo_size_words[ep_number] != 0 {
+            return Err(UsbError::InvalidEndpoint)
+        }
+
+        let mut used = self.total_rx_buffer_size_words() + 30;
+        for sz in &self.tx_fifo_size_words {
+            used += core::cmp::max(*sz as usize, 16);
+        }
+        used -= 16;
+
+        let size_words = core::cmp::max((size + 3) / 4, 16);
+        if (used + size_words) > FIFO_DEPTH_WORDS as usize {
+            return Err(UsbError::EndpointMemoryOverflow);
+        }
+
+        self.tx_fifo_size_words[ep_number] = size_words as u16;
+
+        Ok(())
+    }
+
     /// Returns the size of memory allocated for OUT endpoints in words
     pub fn total_rx_buffer_size_words(&self) -> usize {
         self.next_free_offset
+    }
+
+    pub fn tx_fifo_size_words(&self, ep_number: u8) -> u16 {
+        let ep_number = ep_number as usize;
+        assert!(ep_number < self.tx_fifo_size_words.len());
+
+        self.tx_fifo_size_words[ep_number]
     }
 
     pub fn max_buffer_size_words(&self) -> usize {

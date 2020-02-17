@@ -151,17 +151,11 @@ pub struct EndpointOut {
 }
 
 impl EndpointOut {
-    pub fn new(descriptor: EndpointDescriptor) -> EndpointOut {
+    pub fn new(descriptor: EndpointDescriptor, buffer: EndpointBuffer) -> EndpointOut {
         EndpointOut {
             common: Endpoint::new(descriptor),
-            buffer: Mutex::new(RefCell::new(EndpointBuffer::default())),
+            buffer: Mutex::new(RefCell::new(buffer)),
         }
-    }
-
-    pub fn initialize(&mut self, buffer: EndpointBuffer) {
-        interrupt::free(|cs| {
-            self.buffer.borrow(cs).replace(buffer);
-        });
     }
 
     pub fn configure(&self, _cs: &CriticalSection) {

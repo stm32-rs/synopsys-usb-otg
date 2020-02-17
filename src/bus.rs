@@ -54,54 +54,54 @@ impl<USB: UsbPeripheral> UsbBus<USB> {
 
         // Rx FIFO
         let rx_fifo_size = if USB::HIGH_SPEED {
-            self.endpoint_allocator.total_rx_buffer_size_words() as u32 + 30
+            self.endpoint_allocator.total_rx_buffer_size_words() + 30
         } else {
-            self.endpoint_allocator.total_rx_buffer_size_words() as u32 + 20
+            self.endpoint_allocator.total_rx_buffer_size_words() + 20
         };
-        write_reg!(otg_global, regs.global, GRXFSIZ, rx_fifo_size);
+        write_reg!(otg_global, regs.global, GRXFSIZ, rx_fifo_size as u32);
         let mut fifo_top = rx_fifo_size;
 
         // Tx FIFO #0
-        let fifo_size = self.endpoint_allocator.tx_fifo_size_words(0) as u32;
+        let fifo_size = self.endpoint_allocator.tx_fifo_size_words(0);
 
         #[cfg(feature = "fs")]
         write_reg!(otg_global, regs.global, DIEPTXF0,
-            TX0FD: fifo_size,
-            TX0FSA: fifo_top
+            TX0FD: fifo_size as u32,
+            TX0FSA: fifo_top as u32
         );
         #[cfg(feature = "hs")]
         write_reg!(otg_global, regs.global, GNPTXFSIZ,
-            TX0FD: fifo_size,
-            TX0FSA: fifo_top
+            TX0FD: fifo_size as u32,
+            TX0FSA: fifo_top as u32
         );
 
         fifo_top += fifo_size;
 
         // Tx FIFO #1
-        let fifo_size = self.endpoint_allocator.tx_fifo_size_words(1) as u32;
+        let fifo_size = self.endpoint_allocator.tx_fifo_size_words(1);
         write_reg!(otg_global, regs.global, DIEPTXF1,
-            INEPTXFD: fifo_size,
-            INEPTXSA: fifo_top
+            INEPTXFD: fifo_size as u32,
+            INEPTXSA: fifo_top as u32
         );
         fifo_top += fifo_size;
 
         // Tx FIFO #2
-        let fifo_size = self.endpoint_allocator.tx_fifo_size_words(2) as u32;
+        let fifo_size = self.endpoint_allocator.tx_fifo_size_words(2);
         write_reg!(otg_global, regs.global, DIEPTXF2,
-            INEPTXFD: fifo_size,
-            INEPTXSA: fifo_top
+            INEPTXFD: fifo_size as u32,
+            INEPTXSA: fifo_top as u32
         );
         fifo_top += fifo_size;
 
         // Tx FIFO #3
-        let fifo_size = self.endpoint_allocator.tx_fifo_size_words(3) as u32;
+        let fifo_size = self.endpoint_allocator.tx_fifo_size_words(3);
         write_reg!(otg_global, regs.global, DIEPTXF3,
-            INEPTXFD: fifo_size,
-            INEPTXSA: fifo_top
+            INEPTXFD: fifo_size as u32,
+            INEPTXSA: fifo_top as u32
         );
         fifo_top += fifo_size;
 
-        assert!(fifo_top <= crate::ral::otg_fifo::FIFO_DEPTH_WORDS);
+        assert!(fifo_top as u32 <= crate::ral::otg_fifo::FIFO_DEPTH_WORDS);
 
         // Flush Rx & Tx FIFOs
         modify_reg!(otg_global, regs.global, GRSTCTL, RXFFLSH: 1, TXFFLSH: 1, TXFNUM: 0x10);

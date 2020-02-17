@@ -149,7 +149,7 @@ impl EndpointMemoryAllocator {
             return Err(UsbError::InvalidEndpoint)
         }
 
-        let mut used = self.total_rx_buffer_size_words() + 30;
+        let mut used = self.total_rx_buffer_size_words() as usize + 30;
         for sz in &self.tx_fifo_size_words {
             used += core::cmp::max(*sz as usize, 16);
         }
@@ -166,8 +166,8 @@ impl EndpointMemoryAllocator {
     }
 
     /// Returns the size of memory allocated for OUT endpoints in words
-    pub fn total_rx_buffer_size_words(&self) -> usize {
-        self.next_free_offset
+    pub fn total_rx_buffer_size_words(&self) -> u16 {
+        self.next_free_offset as u16
     }
 
     pub fn tx_fifo_size_words(&self, ep_number: u8) -> u16 {

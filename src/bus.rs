@@ -161,7 +161,7 @@ impl EndpointAllocator {
                 return Err(UsbError::InvalidEndpoint);
             }
             if *bitmap & (1 << number) == 0 {
-                *bitmap |= (1 << number);
+                *bitmap |= 1 << number;
                 Ok(number)
             } else {
                 Err(UsbError::InvalidEndpoint)
@@ -170,7 +170,7 @@ impl EndpointAllocator {
             // Skip EP0
             for number in 1..Self::ENDPOINT_COUNT {
                 if *bitmap & (1 << number) == 0 {
-                    *bitmap |= (1 << number);
+                    *bitmap |= 1 << number;
                     return Ok(number)
                 }
             }

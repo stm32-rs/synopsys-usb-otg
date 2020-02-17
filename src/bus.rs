@@ -191,10 +191,8 @@ impl EndpointAllocator {
     fn alloc_in(&mut self, config: &EndpointConfig) -> Result<EndpointIn> {
         let descr = Self::alloc(&mut self.bitmap_in, config, UsbDirection::In)?;
 
-        let mut ep = EndpointIn::new(descr.address);
-        ep.initialize(descr.ep_type, descr.max_packet_size);
-
-        self.memory_allocator.allocate_tx_buffer(ep.address().index() as u8, descr.max_packet_size as usize)?;
+        self.memory_allocator.allocate_tx_buffer(descr.address.index() as u8, descr.max_packet_size as usize)?;
+        let ep = EndpointIn::new(descr);
 
         Ok(ep)
     }
@@ -202,10 +200,9 @@ impl EndpointAllocator {
     fn alloc_out(&mut self, config: &EndpointConfig) -> Result<EndpointOut> {
         let descr = Self::alloc(&mut self.bitmap_out, config, UsbDirection::In)?;
 
-        let mut ep = EndpointOut::new(descr.address);
-
         let buffer = self.memory_allocator.allocate_rx_buffer(descr.max_packet_size as usize)?;
-        ep.initialize(descr.ep_type, descr.max_packet_size, buffer);
+        let mut ep = EndpointOut::new(descr);
+        ep.initialize(buffer);
 
         Ok(ep)
     }

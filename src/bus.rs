@@ -198,7 +198,7 @@ impl EndpointAllocator {
     }
 
     fn alloc_out(&mut self, config: &EndpointConfig) -> Result<EndpointOut> {
-        let descr = Self::alloc(&mut self.bitmap_out, config, UsbDirection::In)?;
+        let descr = Self::alloc(&mut self.bitmap_out, config, UsbDirection::Out)?;
 
         let buffer = self.memory_allocator.allocate_rx_buffer(descr.max_packet_size as usize)?;
         let ep = EndpointOut::new(descr, buffer);

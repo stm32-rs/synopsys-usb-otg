@@ -385,6 +385,8 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
         interrupt::free(|cs| {
             let regs = self.regs.borrow(cs);
 
+            let core_id = read_reg!(otg_global, regs.global, CID);
+
             let (wakeup, suspend, enum_done, reset, iep, rxflvl) = read_reg!(otg_global, regs.global, GINTSTS,
                 WKUPINT, USBSUSP, ENUMDNE, USBRST, IEPINT, RXFLVL
             );
@@ -436,8 +438,11 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
                             ep_setup |= 1 << epnum;
                         }
                         0x03 | 0x04 => { // OUT completed | SETUP completed
-                            let ep = endpoint_out::instance(epnum as u8);
-                            modify_reg!(endpoint_out, ep, DOEPCTL, CNAK: 1, EPENA: 1);
+                            // Re-enable the endpoint, F429-like chips only
+                            if core_id == 0x0000_1200 || core_id == 0x0000_1100 {
+                                let ep = endpoint_out::instance(epnum as u8);
+                                modify_reg!(endpoint_out, ep, DOEPCTL, CNAK: 1, EPENA: 1);
+                            }
                             read_reg!(otg_global, regs.global, GRXSTSP); // pop GRXSTSP
                         }
                         _ => {
@@ -453,6 +458,12 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
 
                                 let is_setup = status == 0x06;
                                 buffer.fill_from_fifo(data_size as u16, is_setup).ok();
+
+                                // Re-enable the endpoint, F446-like chips only
+                                if core_id == 0x0000_2000 || core_id == 0x0000_2100 {
+                                    let ep = endpoint_out::instance(epnum as u8);
+                                    modify_reg!(endpoint_out, ep, DOEPCTL, CNAK: 1, EPENA: 1);
+                                }
                             }
                         }
                     }

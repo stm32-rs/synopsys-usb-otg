@@ -37,10 +37,15 @@ impl<USB: UsbPeripheral> UsbBus<USB> {
         let regs = self.regs.borrow(cs);
 
         // Rx FIFO
+        // This calculation doesn't correspond to one in a Reference Manual.
+        // In fact, the required number of words is higher than indicated in RM.
+        // The following numbers are pessimistic and were figured out empirically.
         let rx_fifo_size = if USB::HIGH_SPEED {
             self.allocator.memory_allocator.total_rx_buffer_size_words() + 30
         } else {
-            self.allocator.memory_allocator.total_rx_buffer_size_words() + 20
+            // F429 requires 35+ words for the (EP0[8] + EP2[64]) setup
+            // F446 requires 39+ words for the same setup
+            self.allocator.memory_allocator.total_rx_buffer_size_words() + 30
         };
         write_reg!(otg_global, regs.global, GRXFSIZ, rx_fifo_size as u32);
         let mut fifo_top = rx_fifo_size;

@@ -90,6 +90,25 @@ impl<USB: UsbPeripheral> UsbBus<USB> {
         );
         fifo_top += fifo_size;
 
+        #[cfg(feature = "stm32f446xx")]
+        {
+            // Tx FIFO #4
+            let fifo_size = self.allocator.memory_allocator.tx_fifo_size_words(4);
+            write_reg!(otg_global, regs.global, DIEPTXF4,
+                INEPTXFD: fifo_size as u32,
+                INEPTXSA: fifo_top as u32
+            );
+            fifo_top += fifo_size;
+
+            // Tx FIFO #5
+            let fifo_size = self.allocator.memory_allocator.tx_fifo_size_words(5);
+            write_reg!(otg_global, regs.global, DIEPTXF5,
+                INEPTXFD: fifo_size as u32,
+                INEPTXSA: fifo_top as u32
+            );
+            fifo_top += fifo_size;
+        }
+
         assert!(fifo_top as u32 <= crate::ral::otg_fifo::FIFO_DEPTH_WORDS);
 
         // Flush Rx & Tx FIFOs
@@ -390,7 +409,13 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
         interrupt::free(|cs| {
             let regs = self.regs.borrow(cs);
 
+            #[cfg(not(feature = "stm32f446xx"))]
             let core_id = read_reg!(otg_global, regs.global, CID);
+
+            // The CID register is named slightly differently in these crates, this should be
+            // fixed upstream. For now, use this hack to get the right register.
+            #[cfg(feature = "stm32f446xx")]
+            let core_id = read_reg!(otg_global, regs.global, OTG_CID);
 
             let (wakeup, suspend, enum_done, reset, iep, rxflvl) = read_reg!(otg_global, regs.global, GINTSTS,
                 WKUPINT, USBSUSP, ENUMDNE, USBRST, IEPINT, RXFLVL

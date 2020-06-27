@@ -5,6 +5,12 @@ use crate::target::fifo_read_into;
 use usb_device::{Result, UsbError};
 use crate::ral::otg_fifo::FIFO_DEPTH_WORDS;
 
+#[cfg(not(feature = "stm32f446xx"))]
+const N_ENDPOINTS: usize = 4;
+
+#[cfg(feature = "stm32f446xx")]
+const N_ENDPOINTS: usize = 6;
+
 #[derive(Eq, PartialEq)]
 pub enum EndpointBufferState {
     Empty,
@@ -110,7 +116,7 @@ pub struct EndpointMemoryAllocator {
     next_free_offset: usize,
     max_size_words: usize,
     memory: &'static mut [u32],
-    tx_fifo_size_words: [u16; 4],
+    tx_fifo_size_words: [u16; N_ENDPOINTS],
 }
 
 impl EndpointMemoryAllocator {
@@ -119,7 +125,7 @@ impl EndpointMemoryAllocator {
             next_free_offset: 0,
             max_size_words: 0,
             memory,
-            tx_fifo_size_words: [0; 4],
+            tx_fifo_size_words: [0; N_ENDPOINTS],
         }
     }
 

@@ -36,4 +36,7 @@ pub unsafe trait UsbPeripheral: Send + Sync {
 
     /// Enables USB device on its peripheral bus
     fn enable();
+
+    /// AHB frequency in hertz
+    fn ahb_frequency_hz(&self) -> u32;
 }

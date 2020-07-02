@@ -270,17 +270,43 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
             // Wait for AHB ready
             while read_reg!(otg_global, regs.global, GRSTCTL, AHBIDL) == 0 {}
 
+            // Compute TRDT
+            let trdt;
+            if USB::HIGH_SPEED {
+                // From RM0431 (F72xx), RM0090 (F429)
+                trdt = match self.peripheral.ahb_frequency_hz() {
+                    0..=14_199_999 => panic!("AHB frequency is too low"),
+                    14_200_000..=14_999_999 => 0xF,
+                    15_000_000..=15_999_999 => 0xE,
+                    16_000_000..=17_199_999 => 0xD,
+                    17_200_000..=18_499_999 => 0xC,
+                    18_500_000..=19_999_999 => 0xB,
+                    20_000_000..=21_799_999 => 0xA,
+                    21_800_000..=23_999_999 => 0x9,
+                    24_000_000..=27_499_999 => 0x8,
+                    27_500_000..=31_999_999 => 0x7, // 27.7..32 in code from CubeIDE
+                    32_000_000..=u32::MAX => 0x6,
+                };
+            } else {
+                // From RM0431 (F72xx), RM0090 (F429), RM0390 (F446)
+                if self.peripheral.ahb_frequency_hz() >= 30_000_000 {
+                    trdt = 0x9;
+                } else {
+                    panic!("AHB frequency is too low")
+                }
+            }
+
             // Configure OTG as device
             #[cfg(feature = "fs")]
             modify_reg!(otg_global, regs.global, GUSBCFG,
                 SRPCAP: 0, // SRP capability is not enabled
-                TRDT: 0x6, // ??? USB turnaround time
+                TRDT: trdt, // USB turnaround time
                 FDMOD: 1 // Force device mode
             );
             #[cfg(feature = "hs")]
             modify_reg!(otg_global, regs.global, GUSBCFG,
                 SRPCAP: 0, // SRP capability is not enabled
-                TRDT: 0x9, // ??? USB turnaround time
+                TRDT: trdt, // USB turnaround time
                 TOCAL: 0x1,
                 FDMOD: 1, // Force device mode
                 PHYSEL: 1

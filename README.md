@@ -13,6 +13,8 @@ started by [@mvirkkunen](https://github.com/mvirkkunen).
 
 * `STM32F429xx` (OTG_FS and OTG_HS in FS mode)
 * `STM32F401xx`
+* `STM32F446xx` (OTG_FS and OTG_HS in FS mode)
+* `STM32F723xx` (OTG_FS)
 * And others...
 
 

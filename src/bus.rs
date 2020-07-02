@@ -265,6 +265,8 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
         interrupt::free(|cs| {
             let regs = self.regs.borrow(cs);
 
+            let core_id = read_reg!(otg_global, regs.global, CID);
+
             // Wait for AHB ready
             while read_reg!(otg_global, regs.global, GRSTCTL, AHBIDL) == 0 {}
 
@@ -285,8 +287,27 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
             );
 
             // Configuring Vbus sense and SOF output
-            //write_reg!(otg_global, regs.global, GCCFG, VBUSBSEN: 1);
-            write_reg!(otg_global, regs.global, GCCFG, 1 << 21); // set NOVBUSSENS
+            match core_id {
+                0x0000_1200 | 0x0000_1100 => {
+                    // F429-like chips have the GCCFG.VBUSBSEN bit
+
+                    //modify_reg!(otg_global, regs.global, GCCFG, VBUSBSEN: 1);
+                    modify_reg!(otg_global, regs.global, GCCFG, |r| r | (1 << 21));
+
+                    modify_reg!(otg_global, regs.global, GCCFG, VBUSASEN: 0, VBUSBSEN: 0, SOFOUTEN: 0);
+                }
+                0x0000_2000 | 0x0000_2100 => {
+                    // F446-like chips have the GCCFG.VBDEN bit with the opposite meaning
+
+                    //modify_reg!(otg_global, regs.global, GCCFG, VBDEN: 0);
+                    modify_reg!(otg_global, regs.global, GCCFG, |r| r & !(1 << 21));
+
+                    // Force B-peripheral session
+                    //modify_reg!(otg_global, regs.global, GOTGCTL, BVALOEN: 1, BVALOVAL: 1);
+                    modify_reg!(otg_global, regs.global, GOTGCTL, |r| r | (0b11 << 6));
+                }
+                _ => {}
+            }
 
             // Enable PHY clock
             write_reg!(otg_pwrclk, regs.pwrclk, PCGCCTL, 0);

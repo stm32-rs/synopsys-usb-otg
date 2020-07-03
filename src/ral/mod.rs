@@ -48,6 +48,48 @@ pub mod otg_fifo {
     }
 }
 
+pub mod otg_global_dieptxfx {
+    use stm32ral::RWRegister;
+    use core::marker::PhantomData;
+
+    #[cfg(feature = "fs")]
+    pub use stm32ral::otg_fs_global::DIEPTXF1 as DIEPTXFx;
+    #[cfg(feature = "hs")]
+    pub use stm32ral::otg_fs_global::DIEPTXF1 as DIEPTXFx;
+
+    pub struct RegisterBlock {
+        pub DIEPTXFx: RWRegister<u32>,
+    }
+
+    pub struct Instance {
+        pub(crate) addr: u32,
+        pub(crate) _marker: PhantomData<*const RegisterBlock>,
+    }
+
+    impl ::core::ops::Deref for Instance {
+        type Target = RegisterBlock;
+        #[inline(always)]
+        fn deref(&self) -> &RegisterBlock {
+            unsafe { &*(self.addr as *const _) }
+        }
+    }
+
+    #[inline(always)]
+    pub fn instance(index: usize) -> Instance {
+        #[cfg(feature = "fs")]
+        let base_address = 0x5000_0000;
+        #[cfg(feature = "hs")]
+        let base_address = 0x4004_0000;
+
+        assert!(1 <= index && index < 8);
+
+        Instance {
+            addr: base_address + 0x100 + 4 * (index as u32),
+            _marker: PhantomData,
+        }
+    }
+}
+
 pub mod endpoint_in {
     use stm32ral::RWRegister;
     use core::marker::PhantomData;

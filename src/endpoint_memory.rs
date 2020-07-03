@@ -173,8 +173,8 @@ impl<USB: UsbPeripheral> EndpointMemoryAllocator<USB> {
         self.next_free_offset as u16
     }
 
-    pub fn tx_fifo_size_words(&self, ep_number: u8) -> u16 {
-        self.tx_fifo_size_words[ep_number as usize]
+    pub fn tx_fifo_size_words(&self, ep_number: usize) -> u16 {
+        self.tx_fifo_size_words[ep_number]
     }
 
     pub fn max_buffer_size_words(&self) -> usize {

@@ -3,7 +3,7 @@ use usb_device::{Result, UsbDirection, UsbError};
 use usb_device::bus::{UsbBusAllocator, PollResult};
 use usb_device::endpoint::{EndpointType, EndpointAddress};
 use crate::transition::{EndpointConfig, EndpointDescriptor};
-use crate::ral::{read_reg, write_reg, modify_reg, otg_global, otg_device, otg_pwrclk};
+use crate::ral::{read_reg, write_reg, modify_reg, otg_global, otg_device, otg_pwrclk, otg_global_dieptxfx};
 
 use crate::target::UsbRegisters;
 use crate::target::interrupt::{self, Mutex, CriticalSection};
@@ -67,29 +67,18 @@ impl<USB: UsbPeripheral> UsbBus<USB> {
 
         fifo_top += fifo_size;
 
-        // Tx FIFO #1
-        let fifo_size = self.allocator.memory_allocator.tx_fifo_size_words(1);
-        write_reg!(otg_global, regs.global, DIEPTXF1,
-            INEPTXFD: fifo_size as u32,
-            INEPTXSA: fifo_top as u32
-        );
-        fifo_top += fifo_size;
+        // Tx FIFOs
+        for i in 1..USB::ENDPOINT_COUNT {
+            let fifo_size = self.allocator.memory_allocator.tx_fifo_size_words(i);
 
-        // Tx FIFO #2
-        let fifo_size = self.allocator.memory_allocator.tx_fifo_size_words(2);
-        write_reg!(otg_global, regs.global, DIEPTXF2,
-            INEPTXFD: fifo_size as u32,
-            INEPTXSA: fifo_top as u32
-        );
-        fifo_top += fifo_size;
+            let dieptxfx = otg_global_dieptxfx::instance(i);
+            write_reg!(otg_global_dieptxfx, dieptxfx, DIEPTXFx,
+                INEPTXFD: fifo_size as u32,
+                INEPTXSA: fifo_top as u32
+            );
 
-        // Tx FIFO #3
-        let fifo_size = self.allocator.memory_allocator.tx_fifo_size_words(3);
-        write_reg!(otg_global, regs.global, DIEPTXF3,
-            INEPTXFD: fifo_size as u32,
-            INEPTXSA: fifo_top as u32
-        );
-        fifo_top += fifo_size;
+            fifo_top += fifo_size;
+        }
 
         assert!(fifo_top as usize <= USB::FIFO_DEPTH_WORDS);
 

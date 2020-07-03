@@ -130,21 +130,21 @@ impl<USB: UsbPeripheral> UsbBus<USB> {
 pub struct EndpointAllocator<USB> {
     bitmap_in: u8,
     bitmap_out: u8,
-    endpoints_in: [Option<EndpointIn>; 8],
-    endpoints_out: [Option<EndpointOut>; 8],
+    endpoints_in: [Option<EndpointIn>; 9],
+    endpoints_out: [Option<EndpointOut>; 9],
     memory_allocator: EndpointMemoryAllocator<USB>,
     _marker: PhantomData<USB>,
 }
 
 impl<USB: UsbPeripheral> EndpointAllocator<USB> {
     fn new(memory: &'static mut [u32]) -> Self {
-        assert!(USB::ENDPOINT_COUNT <= 8);
+        assert!(USB::ENDPOINT_COUNT <= 9);
         Self {
             bitmap_in: 0,
             bitmap_out: 0,
-            // [None; 8] requires Copy
-            endpoints_in: [None, None, None, None, None, None, None, None],
-            endpoints_out: [None, None, None, None, None, None, None, None],
+            // [None; 9] requires Copy
+            endpoints_in: [None, None, None, None, None, None, None, None, None],
+            endpoints_out: [None, None, None, None, None, None, None, None, None],
             memory_allocator: EndpointMemoryAllocator::new(memory),
             _marker: PhantomData
         }

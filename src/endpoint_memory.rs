@@ -111,7 +111,7 @@ pub struct EndpointMemoryAllocator<USB> {
     next_free_offset: usize,
     max_size_words: usize,
     memory: &'static mut [u32],
-    tx_fifo_size_words: [u16; 8],
+    tx_fifo_size_words: [u16; 9],
     _marker: PhantomData<USB>,
 }
 
@@ -121,7 +121,7 @@ impl<USB: UsbPeripheral> EndpointMemoryAllocator<USB> {
             next_free_offset: 0,
             max_size_words: 0,
             memory,
-            tx_fifo_size_words: [0; 8],
+            tx_fifo_size_words: [0; 9],
             _marker: PhantomData
         }
     }

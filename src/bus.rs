@@ -1,3 +1,4 @@
+use core::marker::PhantomData;
 use usb_device::{Result, UsbDirection, UsbError};
 use usb_device::bus::{UsbBusAllocator, PollResult};
 use usb_device::endpoint::{EndpointType, EndpointAddress};
@@ -14,7 +15,7 @@ use crate::UsbPeripheral;
 pub struct UsbBus<USB> {
     peripheral: USB,
     regs: Mutex<UsbRegisters<USB>>,
-    allocator: EndpointAllocator,
+    allocator: EndpointAllocator<USB>,
 }
 
 impl<USB: UsbPeripheral> UsbBus<USB> {
@@ -137,31 +138,32 @@ impl<USB: UsbPeripheral> UsbBus<USB> {
     }
 }
 
-pub struct EndpointAllocator {
+pub struct EndpointAllocator<USB> {
     bitmap_in: u8,
     bitmap_out: u8,
-    endpoints_in: [Option<EndpointIn>; 4],
-    endpoints_out: [Option<EndpointOut>; 4],
+    endpoints_in: [Option<EndpointIn>; 8],
+    endpoints_out: [Option<EndpointOut>; 8],
     memory_allocator: EndpointMemoryAllocator,
+    _marker: PhantomData<USB>,
 }
 
-impl EndpointAllocator {
-    const ENDPOINT_COUNT: u8 = 4;
-
+impl<USB: UsbPeripheral> EndpointAllocator<USB> {
     fn new(memory: &'static mut [u32]) -> Self {
+        assert!(USB::ENDPOINT_COUNT <= 8);
         Self {
             bitmap_in: 0,
             bitmap_out: 0,
-            // [None; 4] requires Copy
-            endpoints_in: [None, None, None, None],
-            endpoints_out: [None, None, None, None],
+            // [None; 8] requires Copy
+            endpoints_in: [None, None, None, None, None, None, None, None],
+            endpoints_out: [None, None, None, None, None, None, None, None],
             memory_allocator: EndpointMemoryAllocator::new(memory),
+            _marker: PhantomData
         }
     }
 
     fn alloc_number(bitmap: &mut u8, number: Option<u8>) -> Result<u8> {
         if let Some(number) = number {
-            if number >= Self::ENDPOINT_COUNT {
+            if number as usize >= USB::ENDPOINT_COUNT {
                 return Err(UsbError::InvalidEndpoint);
             }
             if *bitmap & (1 << number) == 0 {
@@ -172,10 +174,10 @@ impl EndpointAllocator {
             }
         } else {
             // Skip EP0
-            for number in 1..Self::ENDPOINT_COUNT {
+            for number in 1..USB::ENDPOINT_COUNT {
                 if *bitmap & (1 << number) == 0 {
                     *bitmap |= 1 << number;
-                    return Ok(number)
+                    return Ok(number as u8)
                 }
             }
             Err(UsbError::EndpointOverflow)
@@ -387,7 +389,7 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
     }
 
     fn write(&self, ep_addr: EndpointAddress, buf: &[u8]) -> Result<usize> {
-        if !ep_addr.is_in() || ep_addr.index() >= 4 {
+        if !ep_addr.is_in() || ep_addr.index() >= USB::ENDPOINT_COUNT {
             return Err(UsbError::InvalidEndpoint);
         }
         if let Some(ep) = &self.allocator.endpoints_in[ep_addr.index()] {
@@ -398,7 +400,7 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
     }
 
     fn read(&self, ep_addr: EndpointAddress, buf: &mut [u8]) -> Result<usize> {
-        if !ep_addr.is_out() || ep_addr.index() >= 4 {
+        if !ep_addr.is_out() || ep_addr.index() >= USB::ENDPOINT_COUNT {
             return Err(UsbError::InvalidEndpoint);
         }
 
@@ -410,7 +412,7 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
     }
 
     fn set_stalled(&self, ep_addr: EndpointAddress, stalled: bool) {
-        if ep_addr.index() >= 4 {
+        if ep_addr.index() >= USB::ENDPOINT_COUNT {
             return;
         }
 
@@ -418,7 +420,7 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
     }
 
     fn is_stalled(&self, ep_addr: EndpointAddress) -> bool {
-        if ep_addr.index() >= 4 {
+        if ep_addr.index() >= USB::ENDPOINT_COUNT {
             return true;
         }
 

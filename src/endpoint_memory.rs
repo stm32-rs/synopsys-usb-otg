@@ -110,7 +110,7 @@ pub struct EndpointMemoryAllocator {
     next_free_offset: usize,
     max_size_words: usize,
     memory: &'static mut [u32],
-    tx_fifo_size_words: [u16; 4],
+    tx_fifo_size_words: [u16; 8],
 }
 
 impl EndpointMemoryAllocator {
@@ -119,7 +119,7 @@ impl EndpointMemoryAllocator {
             next_free_offset: 0,
             max_size_words: 0,
             memory,
-            tx_fifo_size_words: [0; 4],
+            tx_fifo_size_words: [0; 8],
         }
     }
 
@@ -171,10 +171,7 @@ impl EndpointMemoryAllocator {
     }
 
     pub fn tx_fifo_size_words(&self, ep_number: u8) -> u16 {
-        let ep_number = ep_number as usize;
-        assert!(ep_number < self.tx_fifo_size_words.len());
-
-        self.tx_fifo_size_words[ep_number]
+        self.tx_fifo_size_words[ep_number as usize]
     }
 
     pub fn max_buffer_size_words(&self) -> usize {

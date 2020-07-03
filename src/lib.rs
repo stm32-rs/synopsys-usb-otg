@@ -34,6 +34,9 @@ pub unsafe trait UsbPeripheral: Send + Sync {
     /// FIFO size in 32-bit words
     const FIFO_DEPTH_WORDS: usize;
 
+    /// Number of (bidirectional) endpoints
+    const ENDPOINT_COUNT: usize;
+
     /// Enables USB device on its peripheral bus
     fn enable();
 

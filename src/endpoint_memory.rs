@@ -1,9 +1,10 @@
 #![allow(dead_code)]
 use core::{slice, mem};
+use core::marker::PhantomData;
 use vcell::VolatileCell;
+use crate::UsbPeripheral;
 use crate::target::fifo_read_into;
 use usb_device::{Result, UsbError};
-use crate::ral::otg_fifo::FIFO_DEPTH_WORDS;
 
 #[derive(Eq, PartialEq)]
 pub enum EndpointBufferState {
@@ -106,20 +107,22 @@ impl Default for EndpointBuffer {
 }
 
 
-pub struct EndpointMemoryAllocator {
+pub struct EndpointMemoryAllocator<USB> {
     next_free_offset: usize,
     max_size_words: usize,
     memory: &'static mut [u32],
     tx_fifo_size_words: [u16; 8],
+    _marker: PhantomData<USB>,
 }
 
-impl EndpointMemoryAllocator {
+impl<USB: UsbPeripheral> EndpointMemoryAllocator<USB> {
     pub fn new(memory: &'static mut [u32]) -> Self {
         Self {
             next_free_offset: 0,
             max_size_words: 0,
             memory,
             tx_fifo_size_words: [0; 8],
+            _marker: PhantomData
         }
     }
 
@@ -156,7 +159,7 @@ impl EndpointMemoryAllocator {
         used -= 16;
 
         let size_words = core::cmp::max((size + 3) / 4, 16);
-        if (used + size_words) > FIFO_DEPTH_WORDS as usize {
+        if (used + size_words) > USB::FIFO_DEPTH_WORDS {
             return Err(UsbError::EndpointMemoryOverflow);
         }
 

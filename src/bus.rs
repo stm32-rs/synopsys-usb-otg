@@ -91,7 +91,7 @@ impl<USB: UsbPeripheral> UsbBus<USB> {
         );
         fifo_top += fifo_size;
 
-        assert!(fifo_top as u32 <= crate::ral::otg_fifo::FIFO_DEPTH_WORDS);
+        assert!(fifo_top as usize <= USB::FIFO_DEPTH_WORDS);
 
         // Flush Rx & Tx FIFOs
         modify_reg!(otg_global, regs.global, GRSTCTL, RXFFLSH: 1, TXFFLSH: 1, TXFNUM: 0x10);
@@ -143,7 +143,7 @@ pub struct EndpointAllocator<USB> {
     bitmap_out: u8,
     endpoints_in: [Option<EndpointIn>; 8],
     endpoints_out: [Option<EndpointOut>; 8],
-    memory_allocator: EndpointMemoryAllocator,
+    memory_allocator: EndpointMemoryAllocator<USB>,
     _marker: PhantomData<USB>,
 }
 

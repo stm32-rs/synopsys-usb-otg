@@ -81,7 +81,7 @@ pub mod otg_global_dieptxfx {
         #[cfg(feature = "hs")]
         let base_address = 0x4004_0000;
 
-        assert!(1 <= index && index < 8);
+        assert!(1 <= index && index < 9);
 
         Instance {
             addr: base_address + 0x100 + 4 * (index as u32),

@@ -56,9 +56,9 @@ pub fn fifo_read_into(buf: &[VolatileCell<u32>]) {
 
 /// Wrapper around device-specific peripheral that provides unified register interface
 pub struct UsbRegisters<USB> {
-    pub global: otg_global::Instance,
-    pub device: otg_device::Instance,
-    pub pwrclk: otg_pwrclk::Instance,
+    pub global: &'static otg_global::RegisterBlock,
+    pub device: &'static otg_device::RegisterBlock,
+    pub pwrclk: &'static otg_pwrclk::RegisterBlock,
     _marker: PhantomData<USB>,
 }
 
@@ -67,9 +67,9 @@ unsafe impl<USB> Send for UsbRegisters<USB> {}
 impl<USB: UsbPeripheral> UsbRegisters<USB> {
     pub fn new() -> Self {
         Self {
-            global: unsafe { otg_global::OTG_GLOBAL::steal() },
-            device: unsafe { otg_device::OTG_DEVICE::steal() },
-            pwrclk: unsafe { otg_pwrclk::OTG_PWRCLK::steal() },
+            global: unsafe { &*otg_global::OTG_GLOBAL },
+            device: unsafe { &*otg_device::OTG_DEVICE },
+            pwrclk: unsafe { &*otg_pwrclk::OTG_PWRCLK },
             _marker: PhantomData,
         }
     }

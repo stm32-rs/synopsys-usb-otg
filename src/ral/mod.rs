@@ -1,39 +1,44 @@
 #![allow(non_snake_case)]
 
-pub use stm32ral::{read_reg, write_reg, modify_reg};
+pub mod instances;
+pub mod peripherals;
+pub mod register;
+pub mod stm32f429;
+
+pub use crate::{read_reg, write_reg, modify_reg};
 
 pub mod otg_global {
     #[cfg(feature = "fs")]
-    pub use stm32ral::otg_fs_global::*;
+    pub use super::stm32f429::otg_fs_global::*;
     #[cfg(feature = "hs")]
-    pub use stm32ral::otg_hs_global::*;
+    pub use super::stm32f429::otg_hs_global::*;
     #[cfg(feature = "fs")]
-    pub use stm32ral::otg_fs_global::OTG_FS_GLOBAL as OTG_GLOBAL;
+    pub use super::stm32f429::otg_fs_global::OTG_FS_GLOBAL as OTG_GLOBAL;
     #[cfg(feature = "hs")]
-    pub use stm32ral::otg_hs_global::OTG_HS_GLOBAL as OTG_GLOBAL;
+    pub use super::stm32f429::otg_hs_global::OTG_HS_GLOBAL as OTG_GLOBAL;
 }
 
 pub mod otg_device {
     #[cfg(feature = "fs")]
-    pub use stm32ral::otg_fs_device::*;
+    pub use super::stm32f429::otg_fs_device::*;
     #[cfg(feature = "hs")]
-    pub use stm32ral::otg_hs_device::*;
+    pub use super::stm32f429::otg_hs_device::*;
     #[cfg(feature = "fs")]
-    pub use stm32ral::otg_fs_device::OTG_FS_DEVICE as OTG_DEVICE;
+    pub use super::stm32f429::otg_fs_device::OTG_FS_DEVICE as OTG_DEVICE;
     #[cfg(feature = "hs")]
-    pub use stm32ral::otg_hs_device::OTG_HS_DEVICE as OTG_DEVICE;
+    pub use super::stm32f429::otg_hs_device::OTG_HS_DEVICE as OTG_DEVICE;
 }
 
 pub mod otg_pwrclk {
-    pub use stm32ral::otg_s_pwrclk::*;
+    pub use super::stm32f429::otg_s_pwrclk::*;
     #[cfg(feature = "fs")]
-    pub use stm32ral::otg_s_pwrclk::OTG_FS_PWRCLK as OTG_PWRCLK;
+    pub use super::stm32f429::otg_s_pwrclk::OTG_FS_PWRCLK as OTG_PWRCLK;
     #[cfg(feature = "hs")]
-    pub use stm32ral::otg_s_pwrclk::OTG_HS_PWRCLK as OTG_PWRCLK;
+    pub use super::stm32f429::otg_s_pwrclk::OTG_HS_PWRCLK as OTG_PWRCLK;
 }
 
 pub mod otg_fifo {
-    use stm32ral::RWRegister;
+    use super::register::RWRegister;
 
     #[inline(always)]
     pub fn instance(channel: usize) -> &'static RWRegister<u32> {
@@ -49,13 +54,13 @@ pub mod otg_fifo {
 }
 
 pub mod otg_global_dieptxfx {
-    use stm32ral::RWRegister;
+    use super::register::RWRegister;
     use core::marker::PhantomData;
 
     #[cfg(feature = "fs")]
-    pub use stm32ral::otg_fs_global::DIEPTXF1 as DIEPTXFx;
+    pub use super::stm32f429::otg_fs_global::DIEPTXF1 as DIEPTXFx;
     #[cfg(feature = "hs")]
-    pub use stm32ral::otg_fs_global::DIEPTXF1 as DIEPTXFx;
+    pub use super::stm32f429::otg_fs_global::DIEPTXF1 as DIEPTXFx;
 
     pub struct RegisterBlock {
         pub DIEPTXFx: RWRegister<u32>,
@@ -91,11 +96,11 @@ pub mod otg_global_dieptxfx {
 }
 
 pub mod endpoint_in {
-    use stm32ral::RWRegister;
+    use super::register::RWRegister;
     use core::marker::PhantomData;
 
     #[cfg(feature = "fs")]
-    pub use stm32ral::otg_fs_device::{
+    pub use super::stm32f429::otg_fs_device::{
         DIEPCTL1 as DIEPCTL,
         DIEPINT1 as DIEPINT,
         DIEPTSIZ1 as DIEPTSIZ,
@@ -103,7 +108,7 @@ pub mod endpoint_in {
     };
 
     #[cfg(feature = "hs")]
-    pub use stm32ral::otg_hs_device::{
+    pub use super::stm32f429::otg_hs_device::{
         DIEPCTL1 as DIEPCTL,
         DIEPINT1 as DIEPINT,
         DIEPTSIZ1 as DIEPTSIZ,
@@ -149,18 +154,18 @@ pub mod endpoint_in {
 }
 
 pub mod endpoint0_out {
-    use stm32ral::RWRegister;
+    use super::register::RWRegister;
     use core::marker::PhantomData;
 
     #[cfg(feature = "fs")]
-    pub use stm32ral::otg_fs_device::{
+    pub use super::stm32f429::otg_fs_device::{
         DOEPCTL0,
         DOEPINT0,
         DOEPTSIZ0,
     };
 
     #[cfg(feature = "hs")]
-    pub use stm32ral::otg_hs_device::{
+    pub use super::stm32f429::otg_hs_device::{
         DOEPCTL0,
         DOEPINT0,
         DOEPTSIZ0,
@@ -203,18 +208,18 @@ pub mod endpoint0_out {
 }
 
 pub mod endpoint_out {
-    use stm32ral::RWRegister;
+    use super::register::RWRegister;
     use core::marker::PhantomData;
 
     #[cfg(feature = "fs")]
-    pub use stm32ral::otg_fs_device::{
+    pub use super::stm32f429::otg_fs_device::{
         DOEPCTL1 as DOEPCTL,
         DOEPINT1 as DOEPINT,
         DOEPTSIZ1 as DOEPTSIZ,
     };
 
     #[cfg(feature = "hs")]
-    pub use stm32ral::otg_hs_device::{
+    pub use super::stm32f429::otg_hs_device::{
         DOEPCTL1 as DOEPCTL,
         DOEPINT1 as DOEPINT,
         DOEPTSIZ1 as DOEPTSIZ,

@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use core::{slice, mem};
+use core::slice;
 use core::marker::PhantomData;
 use vcell::VolatileCell;
 use crate::UsbPeripheral;
@@ -23,7 +23,7 @@ pub struct EndpointBuffer {
 impl EndpointBuffer {
     pub fn new(buffer: &'static mut [u32]) -> Self {
         Self {
-            buffer: unsafe { mem::transmute(buffer) },
+            buffer: unsafe { &mut *(buffer as *mut [u32] as *mut [VolatileCell<u32>]) },
             data_size: 0,
             has_data: false,
             is_setup: false
@@ -138,7 +138,7 @@ impl<USB: UsbPeripheral> EndpointMemoryAllocator<USB> {
         self.max_size_words = core::cmp::max(self.max_size_words, size_words);
 
         let buffer = unsafe {
-            let ptr = self.memory.as_mut_ptr().offset(offset as isize);
+            let ptr = self.memory.as_mut_ptr().add(offset);
             slice::from_raw_parts_mut(ptr, size_words)
         };
         Ok(EndpointBuffer::new(buffer))

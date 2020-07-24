@@ -20,7 +20,7 @@ pub fn fifo_write(usb: UsbRegisters, channel: impl Into<usize>, mut buf: &[u8]) 
         buf = &buf[4..];
         fifo.write(u32::from_ne_bytes(u32_bytes));
     }
-    if buf.len() > 0 {
+    if !buf.is_empty() {
         let mut u32_bytes = [0u8; 4];
         u32_bytes[..buf.len()].copy_from_slice(buf);
         fifo.write(u32::from_ne_bytes(u32_bytes));

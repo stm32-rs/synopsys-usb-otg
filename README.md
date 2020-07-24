@@ -15,6 +15,7 @@ started by [@mvirkkunen](https://github.com/mvirkkunen).
 * `STM32F401xx`
 * `STM32F446xx` (OTG_FS and OTG_HS in FS mode)
 * `STM32F723xx` (OTG_FS)
+* `STM32H7xxxx` (OTG_HS1 in FS mode)
 * And others...
 
 

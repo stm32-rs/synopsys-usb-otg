@@ -313,7 +313,7 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
 
                     modify_reg!(otg_global, regs.global, GCCFG, VBUSASEN: 0, VBUSBSEN: 0, SOFOUTEN: 0);
                 }
-                0x0000_2000 | 0x0000_2100 | 0x0000_3000 | 0x0000_3100 => {
+                0x0000_2000 | 0x0000_2100 | 0x0000_2300 | 0x0000_3000 | 0x0000_3100 => {
                     // F446-like chips have the GCCFG.VBDEN bit with the opposite meaning
 
                     //modify_reg!(otg_global, regs.global, GCCFG, VBDEN: 0);
@@ -504,6 +504,7 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
 
                                 // Re-enable the endpoint, F446-like chips only
                                 if core_id == 0x0000_2000 || core_id == 0x0000_2100 ||
+                                   core_id == 0x0000_2300 ||
                                    core_id == 0x0000_3000 || core_id == 0x0000_3100 {
                                     let ep = endpoint_out::instance(epnum as u8);
                                     modify_reg!(endpoint_out, ep, DOEPCTL, CNAK: 1, EPENA: 1);

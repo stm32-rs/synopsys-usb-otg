@@ -3,7 +3,7 @@ use core::{slice, mem};
 use core::marker::PhantomData;
 use vcell::VolatileCell;
 use crate::UsbPeripheral;
-use crate::target::fifo_read_into;
+use crate::target::{fifo_read_into, UsbRegisters};
 use usb_device::{Result, UsbError};
 
 #[derive(Eq, PartialEq)]
@@ -64,7 +64,7 @@ impl EndpointBuffer {
         Ok(data_size)
     }
 
-    pub fn fill_from_fifo(&mut self, data_size: u16, is_setup: bool) -> Result<()> {
+    pub fn fill_from_fifo(&mut self, usb: UsbRegisters, data_size: u16, is_setup: bool) -> Result<()> {
         if self.has_data {
             return Err(UsbError::WouldBlock);
         }
@@ -74,7 +74,7 @@ impl EndpointBuffer {
         }
 
         let words = (data_size as usize + 3) / 4;
-        fifo_read_into(&self.buffer[..words]);
+        fifo_read_into(usb, &self.buffer[..words]);
 
         self.is_setup = is_setup;
         self.data_size = data_size;

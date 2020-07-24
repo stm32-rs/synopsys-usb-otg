@@ -2,35 +2,36 @@ use usb_device::{Result, UsbError, UsbDirection};
 use usb_device::endpoint::EndpointAddress;
 use crate::endpoint_memory::{EndpointBuffer, EndpointBufferState};
 use crate::ral::{read_reg, write_reg, modify_reg, endpoint_in, endpoint_out, endpoint0_out};
-use crate::target::fifo_write;
+use crate::target::{fifo_write, UsbRegisters};
 use crate::target::interrupt::{self, CriticalSection, Mutex};
 use core::ops::{Deref, DerefMut};
 use core::cell::RefCell;
 use crate::transition::EndpointDescriptor;
+use crate::UsbPeripheral;
 
-pub fn set_stalled(address: EndpointAddress, stalled: bool) {
+pub fn set_stalled(usb: UsbRegisters, address: EndpointAddress, stalled: bool) {
     interrupt::free(|_| {
         match address.direction() {
             UsbDirection::Out => {
-                let ep = endpoint_out::instance(address.index() as u8);
+                let ep = usb.endpoint_out(address.index() as usize);
                 modify_reg!(endpoint_out, ep, DOEPCTL, STALL: stalled as u32);
             },
             UsbDirection::In => {
-                let ep = endpoint_in::instance(address.index() as u8);
+                let ep = usb.endpoint_in(address.index() as usize);
                 modify_reg!(endpoint_in, ep, DIEPCTL, STALL: stalled as u32);
             },
         }
     })
 }
 
-pub fn is_stalled(address: EndpointAddress) -> bool {
+pub fn is_stalled(usb: UsbRegisters, address: EndpointAddress) -> bool {
     let stall = match address.direction() {
         UsbDirection::Out => {
-            let ep = endpoint_out::instance(address.index() as u8);
+            let ep = usb.endpoint_out(address.index());
             read_reg!(endpoint_out, ep, DOEPCTL, STALL)
         },
         UsbDirection::In => {
-            let ep = endpoint_in::instance(address.index() as u8);
+            let ep = usb.endpoint_in(address.index());
             read_reg!(endpoint_in, ep, DIEPCTL, STALL)
         },
     };
@@ -40,11 +41,15 @@ pub fn is_stalled(address: EndpointAddress) -> bool {
 /// Arbitrates access to the endpoint-specific registers and packet buffer memory.
 pub struct Endpoint {
     descriptor: EndpointDescriptor,
+    usb: UsbRegisters,
 }
 
 impl Endpoint {
-    pub fn new(descriptor: EndpointDescriptor) -> Endpoint {
-        Endpoint { descriptor }
+    pub fn new<USB: UsbPeripheral>(descriptor: EndpointDescriptor) -> Endpoint {
+        Endpoint {
+            descriptor,
+            usb: UsbRegisters::new::<USB>()
+        }
     }
 
     pub fn address(&self) -> EndpointAddress {
@@ -63,9 +68,9 @@ pub struct EndpointIn {
 }
 
 impl EndpointIn {
-    pub fn new(descriptor: EndpointDescriptor) -> EndpointIn {
+    pub fn new<USB: UsbPeripheral>(descriptor: EndpointDescriptor) -> EndpointIn {
         EndpointIn {
-            common: Endpoint::new(descriptor),
+            common: Endpoint::new::<USB>(descriptor),
         }
     }
 
@@ -79,11 +84,11 @@ impl EndpointIn {
                 other => panic!("Unsupported EP0 size: {}", other),
             };
 
-            let regs = endpoint_in::instance(self.index());
+            let regs = self.usb.endpoint_in(self.index() as usize);
             write_reg!(endpoint_in, regs, DIEPCTL, MPSIZ: mpsiz as u32, SNAK: 1);
             write_reg!(endpoint_in, regs, DIEPTSIZ, PKTCNT: 0, XFRSIZ: self.descriptor.max_packet_size as u32);
         } else {
-            let regs = endpoint_in::instance(self.index());
+            let regs = self.usb.endpoint_in(self.index() as usize);
             write_reg!(endpoint_in, regs, DIEPCTL,
                 SNAK: 1,
                 USBAEP: 1,
@@ -96,7 +101,7 @@ impl EndpointIn {
     }
 
     pub fn deconfigure(&self, _cs: &CriticalSection) {
-        let regs = endpoint_in::instance(self.index());
+        let regs = self.usb.endpoint_in(self.index() as usize);
 
         // deactivating endpoint
         modify_reg!(endpoint_in, regs, DIEPCTL, USBAEP: 0);
@@ -115,7 +120,7 @@ impl EndpointIn {
     }
 
     pub fn write(&self, buf: &[u8]) -> Result<()> {
-        let ep = endpoint_in::instance(self.index());
+        let ep = self.usb.endpoint_in(self.index() as usize);
         if self.index() != 0 && read_reg!(endpoint_in, ep, DIEPCTL, EPENA) != 0{
             return Err(UsbError::WouldBlock);
         }
@@ -139,7 +144,7 @@ impl EndpointIn {
 
         modify_reg!(endpoint_in, ep, DIEPCTL, CNAK: 1, EPENA: 1);
 
-        fifo_write(self.index(), buf);
+        fifo_write(self.usb, self.index(), buf);
 
         Ok(())
     }
@@ -151,9 +156,9 @@ pub struct EndpointOut {
 }
 
 impl EndpointOut {
-    pub fn new(descriptor: EndpointDescriptor, buffer: EndpointBuffer) -> EndpointOut {
+    pub fn new<USB: UsbPeripheral>(descriptor: EndpointDescriptor, buffer: EndpointBuffer) -> EndpointOut {
         EndpointOut {
-            common: Endpoint::new(descriptor),
+            common: Endpoint::new::<USB>(descriptor),
             buffer: Mutex::new(RefCell::new(buffer)),
         }
     }
@@ -168,11 +173,11 @@ impl EndpointOut {
                 other => panic!("Unsupported EP0 size: {}", other),
             };
 
-            let regs = endpoint0_out::instance();
+            let regs = self.usb.endpoint0_out();
             write_reg!(endpoint0_out, regs, DOEPTSIZ0, STUPCNT: 1, PKTCNT: 1, XFRSIZ: self.descriptor.max_packet_size as u32);
             modify_reg!(endpoint0_out, regs, DOEPCTL0, MPSIZ: mpsiz as u32, EPENA: 1, CNAK: 1);
         } else {
-            let regs = endpoint_out::instance(self.index());
+            let regs = self.usb.endpoint_out(self.index() as usize);
             write_reg!(endpoint_out, regs, DOEPCTL,
                 SD0PID_SEVNFRM: 1,
                 CNAK: 1,
@@ -185,7 +190,7 @@ impl EndpointOut {
     }
 
     pub fn deconfigure(&self, _cs: &CriticalSection) {
-        let regs = endpoint_out::instance(self.index());
+        let regs = self.usb.endpoint_out(self.index() as usize);
 
         // deactivating endpoint
         modify_reg!(endpoint_out, regs, DOEPCTL, USBAEP: 0);

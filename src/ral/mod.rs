@@ -37,25 +37,8 @@ pub mod otg_pwrclk {
     pub use super::stm32f429::otg_s_pwrclk::OTG_HS_PWRCLK as OTG_PWRCLK;
 }
 
-pub mod otg_fifo {
-    use super::register::RWRegister;
-
-    #[inline(always)]
-    pub fn instance(channel: usize) -> &'static RWRegister<u32> {
-        #[cfg(feature = "fs")]
-        let base_address = 0x5000_0000;
-        #[cfg(feature = "hs")]
-        let base_address = 0x4004_0000;
-
-        assert!(channel <= 15);
-        let address = base_address + 0x1000 + channel * 0x1000;
-        unsafe { &*(address as *const RWRegister<u32>) }
-    }
-}
-
 pub mod otg_global_dieptxfx {
     use super::register::RWRegister;
-    use core::marker::PhantomData;
 
     #[cfg(feature = "fs")]
     pub use super::stm32f429::otg_fs_global::DIEPTXF1 as DIEPTXFx;
@@ -65,39 +48,10 @@ pub mod otg_global_dieptxfx {
     pub struct RegisterBlock {
         pub DIEPTXFx: RWRegister<u32>,
     }
-
-    pub struct Instance {
-        pub(crate) addr: u32,
-        pub(crate) _marker: PhantomData<*const RegisterBlock>,
-    }
-
-    impl ::core::ops::Deref for Instance {
-        type Target = RegisterBlock;
-        #[inline(always)]
-        fn deref(&self) -> &RegisterBlock {
-            unsafe { &*(self.addr as *const _) }
-        }
-    }
-
-    #[inline(always)]
-    pub fn instance(index: usize) -> Instance {
-        #[cfg(feature = "fs")]
-        let base_address = 0x5000_0000;
-        #[cfg(feature = "hs")]
-        let base_address = 0x4004_0000;
-
-        assert!(1 <= index && index < 9);
-
-        Instance {
-            addr: base_address + 0x100 + 4 * (index as u32),
-            _marker: PhantomData,
-        }
-    }
 }
 
 pub mod endpoint_in {
     use super::register::RWRegister;
-    use core::marker::PhantomData;
 
     #[cfg(feature = "fs")]
     pub use super::stm32f429::otg_fs_device::{
@@ -125,37 +79,10 @@ pub mod endpoint_in {
         pub DTXFSTS: RWRegister<u32>,
         _reserved3: u32,
     }
-
-    pub struct Instance {
-        pub(crate) addr: u32,
-        pub(crate) _marker: PhantomData<*const RegisterBlock>,
-    }
-
-    impl ::core::ops::Deref for Instance {
-        type Target = RegisterBlock;
-        #[inline(always)]
-        fn deref(&self) -> &RegisterBlock {
-            unsafe { &*(self.addr as *const _) }
-        }
-    }
-
-    #[inline(always)]
-    pub fn instance(index: u8) -> Instance {
-        #[cfg(feature = "fs")]
-        let base_address = 0x5000_0000;
-        #[cfg(feature = "hs")]
-        let base_address = 0x4004_0000;
-
-        Instance {
-            addr: base_address + 0x900 + 0x20 * (index as u32),
-            _marker: PhantomData,
-        }
-    }
 }
 
 pub mod endpoint0_out {
     use super::register::RWRegister;
-    use core::marker::PhantomData;
 
     #[cfg(feature = "fs")]
     pub use super::stm32f429::otg_fs_device::{
@@ -179,37 +106,10 @@ pub mod endpoint0_out {
         pub DOEPTSIZ0: RWRegister<u32>,
         _reserved2: [u32; 3],
     }
-
-    pub struct Instance {
-        pub(crate) addr: u32,
-        pub(crate) _marker: PhantomData<*const RegisterBlock>,
-    }
-
-    impl ::core::ops::Deref for Instance {
-        type Target = RegisterBlock;
-        #[inline(always)]
-        fn deref(&self) -> &RegisterBlock {
-            unsafe { &*(self.addr as *const _) }
-        }
-    }
-
-    #[inline(always)]
-    pub fn instance() -> Instance {
-        #[cfg(feature = "fs")]
-        let base_address = 0x5000_0000;
-        #[cfg(feature = "hs")]
-        let base_address = 0x4004_0000;
-
-        Instance {
-            addr: base_address + 0xb00,
-            _marker: PhantomData,
-        }
-    }
 }
 
 pub mod endpoint_out {
     use super::register::RWRegister;
-    use core::marker::PhantomData;
 
     #[cfg(feature = "fs")]
     pub use super::stm32f429::otg_fs_device::{
@@ -232,31 +132,5 @@ pub mod endpoint_out {
         _reserved1: u32,
         pub DOEPTSIZ: RWRegister<u32>,
         _reserved2: [u32; 3],
-    }
-
-    pub struct Instance {
-        pub(crate) addr: u32,
-        pub(crate) _marker: PhantomData<*const RegisterBlock>,
-    }
-
-    impl ::core::ops::Deref for Instance {
-        type Target = RegisterBlock;
-        #[inline(always)]
-        fn deref(&self) -> &RegisterBlock {
-            unsafe { &*(self.addr as *const _) }
-        }
-    }
-
-    #[inline(always)]
-    pub fn instance(index: u8) -> Instance {
-        #[cfg(feature = "fs")]
-        let base_address = 0x5000_0000;
-        #[cfg(feature = "hs")]
-        let base_address = 0x4004_0000;
-
-        Instance {
-            addr: base_address + 0xb00 + 0x20 * (index as u32),
-            _marker: PhantomData,
-        }
     }
 }

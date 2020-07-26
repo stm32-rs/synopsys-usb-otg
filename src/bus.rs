@@ -14,7 +14,7 @@ use crate::UsbPeripheral;
 /// USB peripheral driver for STM32 microcontrollers.
 pub struct UsbBus<USB> {
     peripheral: USB,
-    regs: Mutex<UsbRegisters<USB>>,
+    regs: Mutex<UsbRegisters>,
     allocator: EndpointAllocator<USB>,
 }
 
@@ -23,7 +23,7 @@ impl<USB: UsbPeripheral> UsbBus<USB> {
     pub fn new(peripheral: USB, ep_memory: &'static mut [u32]) -> UsbBusAllocator<Self> {
         let bus = UsbBus {
             peripheral,
-            regs: Mutex::new(UsbRegisters::new()),
+            regs: Mutex::new(UsbRegisters::new::<USB>()),
             allocator: EndpointAllocator::new(ep_memory),
         };
 
@@ -34,7 +34,7 @@ impl<USB: UsbPeripheral> UsbBus<USB> {
         self.peripheral
     }
 
-    pub fn configure_all(&self, cs: &CriticalSection) {
+    fn configure_all(&self, cs: &CriticalSection) {
         let regs = self.regs.borrow(cs);
 
         // Rx FIFO
@@ -48,19 +48,19 @@ impl<USB: UsbPeripheral> UsbBus<USB> {
             // F446 requires 39+ words for the same setup
             self.allocator.memory_allocator.total_rx_buffer_size_words() + 30
         };
-        write_reg!(otg_global, regs.global, GRXFSIZ, rx_fifo_size as u32);
+        write_reg!(otg_global, regs.global(), GRXFSIZ, rx_fifo_size as u32);
         let mut fifo_top = rx_fifo_size;
 
         // Tx FIFO #0
         let fifo_size = self.allocator.memory_allocator.tx_fifo_size_words(0);
 
         #[cfg(feature = "fs")]
-        write_reg!(otg_global, regs.global, DIEPTXF0,
+        write_reg!(otg_global, regs.global(), DIEPTXF0,
             TX0FD: fifo_size as u32,
             TX0FSA: fifo_top as u32
         );
         #[cfg(feature = "hs")]
-        write_reg!(otg_global, regs.global, GNPTXFSIZ,
+        write_reg!(otg_global, regs.global(), GNPTXFSIZ,
             TX0FD: fifo_size as u32,
             TX0FSA: fifo_top as u32
         );
@@ -71,7 +71,7 @@ impl<USB: UsbPeripheral> UsbBus<USB> {
         for i in 1..USB::ENDPOINT_COUNT {
             let fifo_size = self.allocator.memory_allocator.tx_fifo_size_words(i);
 
-            let dieptxfx = otg_global_dieptxfx::instance(i);
+            let dieptxfx = regs.dieptxfx(i);
             write_reg!(otg_global_dieptxfx, dieptxfx, DIEPTXFx,
                 INEPTXFD: fifo_size as u32,
                 INEPTXSA: fifo_top as u32
@@ -83,13 +83,13 @@ impl<USB: UsbPeripheral> UsbBus<USB> {
         assert!(fifo_top as usize <= USB::FIFO_DEPTH_WORDS);
 
         // Flush Rx & Tx FIFOs
-        modify_reg!(otg_global, regs.global, GRSTCTL, RXFFLSH: 1, TXFFLSH: 1, TXFNUM: 0x10);
-        while read_reg!(otg_global, regs.global, GRSTCTL, RXFFLSH, TXFFLSH) != (0, 0) {}
+        modify_reg!(otg_global, regs.global(), GRSTCTL, RXFFLSH: 1, TXFFLSH: 1, TXFNUM: 0x10);
+        while read_reg!(otg_global, regs.global(), GRSTCTL, RXFFLSH, TXFFLSH) != (0, 0) {}
 
         for ep in &self.allocator.endpoints_in {
             if let Some(ep) = ep {
                 // enabling EP TX interrupt
-                modify_reg!(otg_device, regs.device, DAINTMSK, |v| v | (0x0001 << ep.address().index()));
+                modify_reg!(otg_device, regs.device(), DAINTMSK, |v| v | (0x0001 << ep.address().index()));
 
                 ep.configure(cs);
             }
@@ -99,7 +99,7 @@ impl<USB: UsbPeripheral> UsbBus<USB> {
             if let Some(ep) = ep {
                 if ep.address().index() == 0 {
                     // enabling RX interrupt from EP0
-                    modify_reg!(otg_device, regs.device, DAINTMSK, |v| v | 0x00010000);
+                    modify_reg!(otg_device, regs.device(), DAINTMSK, |v| v | 0x00010000);
                 }
 
                 ep.configure(cs);
@@ -107,11 +107,11 @@ impl<USB: UsbPeripheral> UsbBus<USB> {
         }
     }
 
-    pub fn deconfigure_all(&self, cs: &CriticalSection) {
+    fn deconfigure_all(&self, cs: &CriticalSection) {
         let regs = self.regs.borrow(cs);
 
         // disable interrupts
-        modify_reg!(otg_device, regs.device, DAINTMSK, IEPM: 0, OEPM: 0);
+        modify_reg!(otg_device, regs.device(), DAINTMSK, IEPM: 0, OEPM: 0);
 
         for ep in &self.allocator.endpoints_in {
             if let Some(ep) = ep {
@@ -127,7 +127,7 @@ impl<USB: UsbPeripheral> UsbBus<USB> {
     }
 }
 
-pub struct EndpointAllocator<USB> {
+pub(crate) struct EndpointAllocator<USB> {
     bitmap_in: u8,
     bitmap_out: u8,
     endpoints_in: [Option<EndpointIn>; 9],
@@ -188,7 +188,7 @@ impl<USB: UsbPeripheral> EndpointAllocator<USB> {
         let descr = Self::alloc(&mut self.bitmap_in, config, UsbDirection::In)?;
 
         self.memory_allocator.allocate_tx_buffer(descr.address.index() as u8, descr.max_packet_size as usize)?;
-        let ep = EndpointIn::new(descr);
+        let ep = EndpointIn::new::<USB>(descr);
 
         Ok(ep)
     }
@@ -197,7 +197,7 @@ impl<USB: UsbPeripheral> EndpointAllocator<USB> {
         let descr = Self::alloc(&mut self.bitmap_out, config, UsbDirection::Out)?;
 
         let buffer = self.memory_allocator.allocate_rx_buffer(descr.max_packet_size as usize)?;
-        let ep = EndpointOut::new(descr, buffer);
+        let ep = EndpointOut::new::<USB>(descr, buffer);
 
         Ok(ep)
     }
@@ -256,10 +256,10 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
         interrupt::free(|cs| {
             let regs = self.regs.borrow(cs);
 
-            let core_id = read_reg!(otg_global, regs.global, CID);
+            let core_id = read_reg!(otg_global, regs.global(), CID);
 
             // Wait for AHB ready
-            while read_reg!(otg_global, regs.global, GRSTCTL, AHBIDL) == 0 {}
+            while read_reg!(otg_global, regs.global(), GRSTCTL, AHBIDL) == 0 {}
 
             // Compute TRDT
             let trdt;
@@ -289,13 +289,13 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
 
             // Configure OTG as device
             #[cfg(feature = "fs")]
-            modify_reg!(otg_global, regs.global, GUSBCFG,
+            modify_reg!(otg_global, regs.global(), GUSBCFG,
                 SRPCAP: 0, // SRP capability is not enabled
                 TRDT: trdt, // USB turnaround time
                 FDMOD: 1 // Force device mode
             );
             #[cfg(feature = "hs")]
-            modify_reg!(otg_global, regs.global, GUSBCFG,
+            modify_reg!(otg_global, regs.global(), GUSBCFG,
                 SRPCAP: 0, // SRP capability is not enabled
                 TRDT: trdt, // USB turnaround time
                 TOCAL: 0x1,
@@ -309,53 +309,53 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
                     // F429-like chips have the GCCFG.VBUSBSEN bit
 
                     //modify_reg!(otg_global, regs.global, GCCFG, VBUSBSEN: 1);
-                    modify_reg!(otg_global, regs.global, GCCFG, |r| r | (1 << 21));
+                    modify_reg!(otg_global, regs.global(), GCCFG, |r| r | (1 << 21));
 
-                    modify_reg!(otg_global, regs.global, GCCFG, VBUSASEN: 0, VBUSBSEN: 0, SOFOUTEN: 0);
+                    modify_reg!(otg_global, regs.global(), GCCFG, VBUSASEN: 0, VBUSBSEN: 0, SOFOUTEN: 0);
                 }
                 0x0000_2000 | 0x0000_2100 | 0x0000_2300 | 0x0000_3000 | 0x0000_3100 => {
                     // F446-like chips have the GCCFG.VBDEN bit with the opposite meaning
 
                     //modify_reg!(otg_global, regs.global, GCCFG, VBDEN: 0);
-                    modify_reg!(otg_global, regs.global, GCCFG, |r| r & !(1 << 21));
+                    modify_reg!(otg_global, regs.global(), GCCFG, |r| r & !(1 << 21));
 
                     // Force B-peripheral session
                     //modify_reg!(otg_global, regs.global, GOTGCTL, BVALOEN: 1, BVALOVAL: 1);
-                    modify_reg!(otg_global, regs.global, GOTGCTL, |r| r | (0b11 << 6));
+                    modify_reg!(otg_global, regs.global(), GOTGCTL, |r| r | (0b11 << 6));
                 }
                 _ => {}
             }
 
             // Enable PHY clock
-            write_reg!(otg_pwrclk, regs.pwrclk, PCGCCTL, 0);
+            write_reg!(otg_pwrclk, regs.pwrclk(), PCGCCTL, 0);
 
             // Soft disconnect device
-            modify_reg!(otg_device, regs.device, DCTL, SDIS: 1);
+            modify_reg!(otg_device, regs.device(), DCTL, SDIS: 1);
 
             // Setup USB FS speed [and frame interval]
-            modify_reg!(otg_device, regs.device, DCFG,
+            modify_reg!(otg_device, regs.device(), DCFG,
                 DSPD: 0b11 // Device speed: Full speed
             );
 
             // unmask EP interrupts
-            write_reg!(otg_device, regs.device, DIEPMSK, XFRCM: 1);
+            write_reg!(otg_device, regs.device(), DIEPMSK, XFRCM: 1);
 
             // unmask core interrupts
-            write_reg!(otg_global, regs.global, GINTMSK,
+            write_reg!(otg_global, regs.global(), GINTMSK,
                 USBRST: 1, ENUMDNEM: 1,
                 USBSUSPM: 1, WUIM: 1,
                 IEPINT: 1, RXFLVLM: 1
             );
 
             // clear pending interrupts
-            write_reg!(otg_global, regs.global, GINTSTS, 0xffffffff);
+            write_reg!(otg_global, regs.global(), GINTSTS, 0xffffffff);
 
             // unmask global interrupt
-            modify_reg!(otg_global, regs.global, GAHBCFG, GINT: 1);
+            modify_reg!(otg_global, regs.global(), GAHBCFG, GINT: 1);
 
             // connect(true)
-            modify_reg!(otg_global, regs.global, GCCFG, PWRDWN: 1);
-            modify_reg!(otg_device, regs.device, DCTL, SDIS: 0);
+            modify_reg!(otg_global, regs.global(), GCCFG, PWRDWN: 1);
+            modify_reg!(otg_device, regs.device(), DCTL, SDIS: 0);
         });
     }
 
@@ -365,7 +365,7 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
 
             self.configure_all(cs);
 
-            modify_reg!(otg_device, regs.device, DCFG, DAD: 0);
+            modify_reg!(otg_device, regs.device(), DCFG, DAD: 0);
         });
     }
 
@@ -373,7 +373,7 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
         interrupt::free(|cs| {
             let regs = self.regs.borrow(cs);
 
-            modify_reg!(otg_device, regs.device, DCFG, DAD: addr as u32);
+            modify_reg!(otg_device, regs.device(), DCFG, DAD: addr as u32);
         });
     }
 
@@ -405,7 +405,8 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
             return;
         }
 
-        crate::endpoint::set_stalled(ep_addr, stalled)
+        let regs = UsbRegisters::new::<USB>();
+        crate::endpoint::set_stalled(regs, ep_addr, stalled)
     }
 
     fn is_stalled(&self, ep_addr: EndpointAddress) -> bool {
@@ -413,7 +414,8 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
             return true;
         }
 
-        crate::endpoint::is_stalled(ep_addr)
+        let regs = UsbRegisters::new::<USB>();
+        crate::endpoint::is_stalled(regs, ep_addr)
     }
 
     fn suspend(&self) {
@@ -428,33 +430,33 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
         interrupt::free(|cs| {
             let regs = self.regs.borrow(cs);
 
-            let core_id = read_reg!(otg_global, regs.global, CID);
+            let core_id = read_reg!(otg_global, regs.global(), CID);
 
-            let (wakeup, suspend, enum_done, reset, iep, rxflvl) = read_reg!(otg_global, regs.global, GINTSTS,
+            let (wakeup, suspend, enum_done, reset, iep, rxflvl) = read_reg!(otg_global, regs.global(), GINTSTS,
                 WKUPINT, USBSUSP, ENUMDNE, USBRST, IEPINT, RXFLVL
             );
 
             if reset != 0 {
-                write_reg!(otg_global, regs.global, GINTSTS, USBRST: 1);
+                write_reg!(otg_global, regs.global(), GINTSTS, USBRST: 1);
 
                 self.deconfigure_all(cs);
 
                 // Flush RX
-                modify_reg!(otg_global, regs.global, GRSTCTL, RXFFLSH: 1);
-                while read_reg!(otg_global, regs.global, GRSTCTL, RXFFLSH) == 1 {}
+                modify_reg!(otg_global, regs.global(), GRSTCTL, RXFFLSH: 1);
+                while read_reg!(otg_global, regs.global(), GRSTCTL, RXFFLSH) == 1 {}
             }
 
             if enum_done != 0 {
-                write_reg!(otg_global, regs.global, GINTSTS, ENUMDNE: 1);
+                write_reg!(otg_global, regs.global(), GINTSTS, ENUMDNE: 1);
 
                 PollResult::Reset
             } else if wakeup != 0 {
                 // Clear the interrupt
-                write_reg!(otg_global, regs.global, GINTSTS, WKUPINT: 1);
+                write_reg!(otg_global, regs.global(), GINTSTS, WKUPINT: 1);
 
                 PollResult::Resume
             } else if suspend != 0 {
-                write_reg!(otg_global, regs.global, GINTSTS, USBSUSP: 1);
+                write_reg!(otg_global, regs.global(), GINTSTS, USBSUSP: 1);
 
                 PollResult::Suspend
             } else {
@@ -466,30 +468,30 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
 
                 // RXFLVL & IEPINT flags are read-only, there is no need to clear them
                 if rxflvl != 0 {
-                    let (epnum, data_size, status) = read_reg!(otg_global, regs.global, GRXSTSR, EPNUM, BCNT, PKTSTS);
+                    let (epnum, data_size, status) = read_reg!(otg_global, regs.global(), GRXSTSR, EPNUM, BCNT, PKTSTS);
                     match status {
                         0x02 => { // OUT received
                             ep_out |= 1 << epnum;
                         }
                         0x06 => { // SETUP received
                             // flushing TX if something stuck in control endpoint
-                            let ep = endpoint_in::instance(epnum as u8);
+                            let ep = regs.endpoint_in(epnum as usize);
                             if read_reg!(endpoint_in, ep, DIEPTSIZ, PKTCNT) != 0 {
-                                modify_reg!(otg_global, regs.global, GRSTCTL, TXFNUM: epnum, TXFFLSH: 1);
-                                while read_reg!(otg_global, regs.global, GRSTCTL, TXFFLSH) == 1 {}
+                                modify_reg!(otg_global, regs.global(), GRSTCTL, TXFNUM: epnum, TXFFLSH: 1);
+                                while read_reg!(otg_global, regs.global(), GRSTCTL, TXFFLSH) == 1 {}
                             }
                             ep_setup |= 1 << epnum;
                         }
                         0x03 | 0x04 => { // OUT completed | SETUP completed
                             // Re-enable the endpoint, F429-like chips only
                             if core_id == 0x0000_1200 || core_id == 0x0000_1100 {
-                                let ep = endpoint_out::instance(epnum as u8);
+                                let ep = regs.endpoint_out(epnum as usize);
                                 modify_reg!(endpoint_out, ep, DOEPCTL, CNAK: 1, EPENA: 1);
                             }
-                            read_reg!(otg_global, regs.global, GRXSTSP); // pop GRXSTSP
+                            read_reg!(otg_global, regs.global(), GRXSTSP); // pop GRXSTSP
                         }
                         _ => {
-                            read_reg!(otg_global, regs.global, GRXSTSP); // pop GRXSTSP
+                            read_reg!(otg_global, regs.global(), GRXSTSP); // pop GRXSTSP
                         }
                     }
 
@@ -497,16 +499,16 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
                         if let Some(ep) = &self.allocator.endpoints_out[epnum as usize] {
                             let mut buffer = ep.buffer.borrow(cs).borrow_mut();
                             if buffer.state() == EndpointBufferState::Empty {
-                                read_reg!(otg_global, regs.global, GRXSTSP); // pop GRXSTSP
+                                read_reg!(otg_global, regs.global(), GRXSTSP); // pop GRXSTSP
 
                                 let is_setup = status == 0x06;
-                                buffer.fill_from_fifo(data_size as u16, is_setup).ok();
+                                buffer.fill_from_fifo(*regs, data_size as u16, is_setup).ok();
 
                                 // Re-enable the endpoint, F446-like chips only
                                 if core_id == 0x0000_2000 || core_id == 0x0000_2100 ||
                                    core_id == 0x0000_2300 ||
                                    core_id == 0x0000_3000 || core_id == 0x0000_3100 {
-                                    let ep = endpoint_out::instance(epnum as u8);
+                                    let ep = regs.endpoint_out(epnum as usize);
                                     modify_reg!(endpoint_out, ep, DOEPCTL, CNAK: 1, EPENA: 1);
                                 }
                             }
@@ -517,7 +519,7 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
                 if iep != 0 {
                     for ep in &self.allocator.endpoints_in {
                         if let Some(ep) = ep {
-                            let ep_regs = endpoint_in::instance(ep.address().index() as u8);
+                            let ep_regs = regs.endpoint_in(ep.address().index());
                             if read_reg!(endpoint_in, ep_regs, DIEPINT, XFRC) != 0 {
                                 write_reg!(endpoint_in, ep_regs, DIEPINT, XFRC: 1);
                                 ep_in_complete |= 1 << ep.address().index();

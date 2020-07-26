@@ -1,9 +1,9 @@
 #![allow(dead_code)]
-use core::{slice, mem};
+use core::slice;
 use core::marker::PhantomData;
 use vcell::VolatileCell;
 use crate::UsbPeripheral;
-use crate::target::fifo_read_into;
+use crate::target::{fifo_read_into, UsbRegisters};
 use usb_device::{Result, UsbError};
 
 #[derive(Eq, PartialEq)]
@@ -23,7 +23,7 @@ pub struct EndpointBuffer {
 impl EndpointBuffer {
     pub fn new(buffer: &'static mut [u32]) -> Self {
         Self {
-            buffer: unsafe { mem::transmute(buffer) },
+            buffer: unsafe { &mut *(buffer as *mut [u32] as *mut [VolatileCell<u32>]) },
             data_size: 0,
             has_data: false,
             is_setup: false
@@ -64,7 +64,7 @@ impl EndpointBuffer {
         Ok(data_size)
     }
 
-    pub fn fill_from_fifo(&mut self, data_size: u16, is_setup: bool) -> Result<()> {
+    pub fn fill_from_fifo(&mut self, usb: UsbRegisters, data_size: u16, is_setup: bool) -> Result<()> {
         if self.has_data {
             return Err(UsbError::WouldBlock);
         }
@@ -74,7 +74,7 @@ impl EndpointBuffer {
         }
 
         let words = (data_size as usize + 3) / 4;
-        fifo_read_into(&self.buffer[..words]);
+        fifo_read_into(usb, &self.buffer[..words]);
 
         self.is_setup = is_setup;
         self.data_size = data_size;
@@ -138,7 +138,7 @@ impl<USB: UsbPeripheral> EndpointMemoryAllocator<USB> {
         self.max_size_words = core::cmp::max(self.max_size_words, size_words);
 
         let buffer = unsafe {
-            let ptr = self.memory.as_mut_ptr().offset(offset as isize);
+            let ptr = self.memory.as_mut_ptr().add(offset);
             slice::from_raw_parts_mut(ptr, size_words)
         };
         Ok(EndpointBuffer::new(buffer))

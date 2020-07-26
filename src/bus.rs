@@ -34,7 +34,7 @@ impl<USB: UsbPeripheral> UsbBus<USB> {
         self.peripheral
     }
 
-    fn configure_all(&self, cs: &CriticalSection) {
+    pub fn configure_all(&self, cs: &CriticalSection) {
         let regs = self.regs.borrow(cs);
 
         // Rx FIFO
@@ -107,7 +107,7 @@ impl<USB: UsbPeripheral> UsbBus<USB> {
         }
     }
 
-    fn deconfigure_all(&self, cs: &CriticalSection) {
+    pub fn deconfigure_all(&self, cs: &CriticalSection) {
         let regs = self.regs.borrow(cs);
 
         // disable interrupts
@@ -127,7 +127,7 @@ impl<USB: UsbPeripheral> UsbBus<USB> {
     }
 }
 
-pub(crate) struct EndpointAllocator<USB> {
+pub struct EndpointAllocator<USB> {
     bitmap_in: u8,
     bitmap_out: u8,
     endpoints_in: [Option<EndpointIn>; 9],

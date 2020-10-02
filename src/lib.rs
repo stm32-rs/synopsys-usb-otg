@@ -42,4 +42,20 @@ pub unsafe trait UsbPeripheral: Send + Sync {
 
     /// AHB frequency in hertz
     fn ahb_frequency_hz(&self) -> u32;
+
+    /// Returns PHY type that should be used for USB peripheral
+    fn phy_type(&self) -> PhyType { PhyType::InternalFullSpeed }
+
+    /// Performs initial setup of the internal high-speed PHY
+    ///
+    /// This function should turn on LDO and PLL and wait for PHY clock to become stable.
+    fn setup_internal_hs_phy(&self) {}
+}
+
+/// USB PHY type
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum PhyType {
+    InternalFullSpeed,
+    InternalHighSpeed,
+    ExternalHighSpeed,
 }

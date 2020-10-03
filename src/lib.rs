@@ -55,7 +55,14 @@ pub unsafe trait UsbPeripheral: Send + Sync {
 /// USB PHY type
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum PhyType {
+    /// Internal Full-Speed PHY
+    ///
+    /// Available on most High-Speed peripherals.
     InternalFullSpeed,
+    /// Internal High-Speed PHY
+    ///
+    /// Available on a few STM32 chips.
     InternalHighSpeed,
+    /// External ULPI High-Speed PHY
     ExternalHighSpeed,
 }

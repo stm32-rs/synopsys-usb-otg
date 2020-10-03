@@ -9,7 +9,7 @@ use crate::target::UsbRegisters;
 use crate::target::interrupt::{self, Mutex, CriticalSection};
 use crate::endpoint::{EndpointIn, EndpointOut};
 use crate::endpoint_memory::{EndpointMemoryAllocator, EndpointBufferState};
-use crate::UsbPeripheral;
+use crate::{UsbPeripheral, PhyType};
 
 /// USB peripheral driver for STM32 microcontrollers.
 pub struct UsbBus<USB> {
@@ -299,9 +299,56 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
                 SRPCAP: 0, // SRP capability is not enabled
                 TRDT: trdt, // USB turnaround time
                 TOCAL: 0x1,
-                FDMOD: 1, // Force device mode
-                PHYSEL: 1
+                FDMOD: 1 // Force device mode
             );
+
+            // Configure USB PHY
+            #[cfg(feature = "hs")]
+            match self.peripheral.phy_type() {
+                PhyType::InternalFullSpeed => {
+                    // Select FS Embedded PHY
+                    modify_reg!(otg_global, regs.global(), GUSBCFG, PHYSEL: 1);
+                },
+                PhyType::InternalHighSpeed => {
+                    // Turn off PHY
+                    modify_reg!(otg_global, regs.global(), GCCFG, PWRDWN: 0);
+
+                    // Init The UTMI Interface
+                    modify_reg!(otg_global, regs.global(), GUSBCFG,
+                        TSDPS: 0,
+                        ULPIFSLS: 0,
+                        PHYSEL: 0 // ULPI or UTMI
+                    );
+
+                    // Select vbus source
+                    modify_reg!(otg_global, regs.global(), GUSBCFG,
+                        ULPIEVBUSD: 0,
+                        ULPIEVBUSI: 0
+                    );
+
+                    // Select UTMI Interace
+                    //modify_reg!(otg_global, regs.global(), GUSBCFG, ULPISEL: 0);
+                    modify_reg!(otg_global, regs.global(), GUSBCFG, |r| r & !(1 << 4));
+
+                    // This is a secret bit from ST that is not mentioned anywhere except
+                    // the driver code shipped with STM32CubeIDE.
+                    //modify_reg!(otg_global, regs.global(), GCCFG, PHYHSEN: 1);
+                    modify_reg!(otg_global, regs.global(), GCCFG, |r| r | (1 << 23));
+
+                    self.peripheral.setup_internal_hs_phy();
+                }
+                PhyType::ExternalHighSpeed => unimplemented!()
+            }
+
+            // Perform core soft-reset
+            while read_reg!(otg_global, regs.global(), GRSTCTL, AHBIDL) == 0 {}
+            modify_reg!(otg_global, regs.global(), GRSTCTL, CSRST: 1);
+            while read_reg!(otg_global, regs.global(), GRSTCTL, CSRST) == 1 {}
+
+            if self.peripheral.phy_type() == PhyType::InternalFullSpeed {
+                // Activate the USB Transceiver
+                modify_reg!(otg_global, regs.global(), GCCFG, PWRDWN: 1);
+            }
 
             // Configuring Vbus sense and SOF output
             match core_id {
@@ -332,9 +379,16 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
             // Soft disconnect device
             modify_reg!(otg_device, regs.device(), DCTL, SDIS: 1);
 
-            // Setup USB FS speed [and frame interval]
+            // Setup USB speed and frame interval
+            let speed = match (USB::HIGH_SPEED, self.peripheral.phy_type()) {
+                (false, _) => 0b11,
+                (true, PhyType::InternalFullSpeed) => 0b11,
+                (true, PhyType::InternalHighSpeed) => 0b00,
+                (true, PhyType::ExternalHighSpeed) => 0b00,
+            };
             modify_reg!(otg_device, regs.device(), DCFG,
-                DSPD: 0b11 // Device speed: Full speed
+                PFIVL: 0b00,
+                DSPD: speed
             );
 
             // unmask EP interrupts
@@ -354,7 +408,6 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
             modify_reg!(otg_global, regs.global(), GAHBCFG, GINT: 1);
 
             // connect(true)
-            modify_reg!(otg_global, regs.global(), GCCFG, PWRDWN: 1);
             modify_reg!(otg_device, regs.device(), DCTL, SDIS: 0);
         });
     }

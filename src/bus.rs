@@ -263,7 +263,7 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
 
             // Compute TRDT
             let trdt;
-            if USB::HIGH_SPEED {
+            if !USB::HIGH_SPEED {
                 // From RM0431 (F72xx), RM0090 (F429)
                 trdt = match self.peripheral.ahb_frequency_hz() {
                     0..=14_199_999 => panic!("AHB frequency is too low"),

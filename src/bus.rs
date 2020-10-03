@@ -9,7 +9,7 @@ use crate::target::UsbRegisters;
 use crate::target::interrupt::{self, Mutex, CriticalSection};
 use crate::endpoint::{EndpointIn, EndpointOut};
 use crate::endpoint_memory::{EndpointMemoryAllocator, EndpointBufferState};
-use crate::UsbPeripheral;
+use crate::{UsbPeripheral, PhyType};
 
 /// USB peripheral driver for STM32 microcontrollers.
 pub struct UsbBus<USB> {
@@ -261,47 +261,66 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
             // Wait for AHB ready
             while read_reg!(otg_global, regs.global(), GRSTCTL, AHBIDL) == 0 {}
 
-            // Compute TRDT
-            let trdt;
-            if USB::HIGH_SPEED {
-                // From RM0431 (F72xx), RM0090 (F429)
-                trdt = match self.peripheral.ahb_frequency_hz() {
-                    0..=14_199_999 => panic!("AHB frequency is too low"),
-                    14_200_000..=14_999_999 => 0xF,
-                    15_000_000..=15_999_999 => 0xE,
-                    16_000_000..=17_199_999 => 0xD,
-                    17_200_000..=18_499_999 => 0xC,
-                    18_500_000..=19_999_999 => 0xB,
-                    20_000_000..=21_799_999 => 0xA,
-                    21_800_000..=23_999_999 => 0x9,
-                    24_000_000..=27_499_999 => 0x8,
-                    27_500_000..=31_999_999 => 0x7, // 27.7..32 in code from CubeIDE
-                    32_000_000..=u32::MAX => 0x6,
-                };
-            } else {
-                // From RM0431 (F72xx), RM0090 (F429), RM0390 (F446)
-                if self.peripheral.ahb_frequency_hz() >= 30_000_000 {
-                    trdt = 0x9;
-                } else {
-                    panic!("AHB frequency is too low")
-                }
-            }
-
             // Configure OTG as device
             #[cfg(feature = "fs")]
             modify_reg!(otg_global, regs.global(), GUSBCFG,
                 SRPCAP: 0, // SRP capability is not enabled
-                TRDT: trdt, // USB turnaround time
                 FDMOD: 1 // Force device mode
             );
             #[cfg(feature = "hs")]
             modify_reg!(otg_global, regs.global(), GUSBCFG,
                 SRPCAP: 0, // SRP capability is not enabled
-                TRDT: trdt, // USB turnaround time
                 TOCAL: 0x1,
-                FDMOD: 1, // Force device mode
-                PHYSEL: 1
+                FDMOD: 1 // Force device mode
             );
+
+            // Configure USB PHY
+            #[cfg(feature = "hs")]
+            match self.peripheral.phy_type() {
+                PhyType::InternalFullSpeed => {
+                    // Select FS Embedded PHY
+                    modify_reg!(otg_global, regs.global(), GUSBCFG, PHYSEL: 1);
+                },
+                PhyType::InternalHighSpeed => {
+                    // Turn off PHY
+                    modify_reg!(otg_global, regs.global(), GCCFG, PWRDWN: 0);
+
+                    // Init The UTMI Interface
+                    modify_reg!(otg_global, regs.global(), GUSBCFG,
+                        TSDPS: 0,
+                        ULPIFSLS: 0,
+                        PHYSEL: 0 // ULPI or UTMI
+                    );
+
+                    // Select vbus source
+                    modify_reg!(otg_global, regs.global(), GUSBCFG,
+                        ULPIEVBUSD: 0,
+                        ULPIEVBUSI: 0
+                    );
+
+                    // Select UTMI Interace
+                    //modify_reg!(otg_global, regs.global(), GUSBCFG, ULPISEL: 0);
+                    modify_reg!(otg_global, regs.global(), GUSBCFG, |r| r & !(1 << 4));
+
+                    // This is a secret bit from ST that is not mentioned anywhere except
+                    // the driver code shipped with STM32CubeIDE.
+                    //modify_reg!(otg_global, regs.global(), GCCFG, PHYHSEN: 1);
+                    modify_reg!(otg_global, regs.global(), GCCFG, |r| r | (1 << 23));
+
+                    self.peripheral.setup_internal_hs_phy();
+                }
+                PhyType::ExternalHighSpeed => unimplemented!()
+            }
+
+            // Perform core soft-reset
+            while read_reg!(otg_global, regs.global(), GRSTCTL, AHBIDL) == 0 {}
+            modify_reg!(otg_global, regs.global(), GRSTCTL, CSRST: 1);
+            while read_reg!(otg_global, regs.global(), GRSTCTL, CSRST) == 1 {}
+
+            if self.peripheral.phy_type() == PhyType::InternalFullSpeed {
+                // Activate the USB Transceiver
+                modify_reg!(otg_global, regs.global(), GCCFG, PWRDWN: 1);
+            }
 
             // Configuring Vbus sense and SOF output
             match core_id {
@@ -332,9 +351,16 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
             // Soft disconnect device
             modify_reg!(otg_device, regs.device(), DCTL, SDIS: 1);
 
-            // Setup USB FS speed [and frame interval]
+            // Setup USB speed and frame interval
+            let speed = match (USB::HIGH_SPEED, self.peripheral.phy_type()) {
+                (false, _) => 0b11,
+                (true, PhyType::InternalFullSpeed) => 0b11,
+                (true, PhyType::InternalHighSpeed) => 0b00,
+                (true, PhyType::ExternalHighSpeed) => 0b00,
+            };
             modify_reg!(otg_device, regs.device(), DCFG,
-                DSPD: 0b11 // Device speed: Full speed
+                PFIVL: 0b00,
+                DSPD: speed
             );
 
             // unmask EP interrupts
@@ -354,7 +380,6 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
             modify_reg!(otg_global, regs.global(), GAHBCFG, GINT: 1);
 
             // connect(true)
-            modify_reg!(otg_global, regs.global(), GCCFG, PWRDWN: 1);
             modify_reg!(otg_device, regs.device(), DCTL, SDIS: 0);
         });
     }
@@ -448,6 +473,43 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
 
             if enum_done != 0 {
                 write_reg!(otg_global, regs.global(), GINTSTS, ENUMDNE: 1);
+
+                let speed = read_reg!(otg_device, regs.device(), DSTS, ENUMSPD);
+
+                // Compute and update TRDT
+                let trdt;
+                match speed {
+                    0b00 => {
+                        // High speed
+
+                        // From RM0431 (F72xx), RM0090 (F429), RM0390 (F446)
+                        if self.peripheral.ahb_frequency_hz() >= 30_000_000 {
+                            trdt = 0x9;
+                        } else {
+                            panic!("AHB frequency is too low")
+                        }
+                    }
+                    0b01 | 0b11 => {
+                        // Full speed
+
+                        // From RM0431 (F72xx), RM0090 (F429)
+                        trdt = match self.peripheral.ahb_frequency_hz() {
+                            0..=14_199_999 => panic!("AHB frequency is too low"),
+                            14_200_000..=14_999_999 => 0xF,
+                            15_000_000..=15_999_999 => 0xE,
+                            16_000_000..=17_199_999 => 0xD,
+                            17_200_000..=18_499_999 => 0xC,
+                            18_500_000..=19_999_999 => 0xB,
+                            20_000_000..=21_799_999 => 0xA,
+                            21_800_000..=23_999_999 => 0x9,
+                            24_000_000..=27_499_999 => 0x8,
+                            27_500_000..=31_999_999 => 0x7, // 27.7..32 in code from CubeIDE
+                            32_000_000..=u32::MAX => 0x6,
+                        };
+                    }
+                    _ => unimplemented!()
+                }
+                modify_reg!(otg_global, regs.global(), GUSBCFG, TRDT: trdt);
 
                 PollResult::Reset
             } else if wakeup != 0 {

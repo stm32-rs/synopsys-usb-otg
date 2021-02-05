@@ -292,7 +292,7 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
                         PHYSEL: 0 // ULPI or UTMI
                     );
 
-                    // Select vbus source
+                    // Select VBUS source
                     modify_reg!(otg_global, regs.global(), GUSBCFG,
                         ULPIEVBUSD: 0,
                         ULPIEVBUSI: 0
@@ -309,7 +309,23 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
 
                     self.peripheral.setup_internal_hs_phy();
                 }
-                PhyType::ExternalHighSpeed => unimplemented!()
+                PhyType::ExternalHighSpeed => {
+                    // Turn off embedded PHY
+                    modify_reg!(otg_global, regs.global(), GCCFG, PWRDWN: 0);
+
+                    // Init The ULPI Interface
+                    modify_reg!(otg_global, regs.global(), GUSBCFG,
+                        TSDPS: 0,
+                        ULPIFSLS: 0,
+                        PHYSEL: 0 // ULPI or UTMI
+                    );
+
+                    // Select VBUS source
+                    modify_reg!(otg_global, regs.global(), GUSBCFG,
+                        ULPIEVBUSD: 0,
+                        ULPIEVBUSI: 0
+                    );
+                }
             }
 
             // Perform core soft-reset

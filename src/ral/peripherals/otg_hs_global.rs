@@ -1650,6 +1650,94 @@ pub mod GNPTXSTS {
     }
 }
 
+/// OTG_HS PHY Control Register
+pub mod PHYCR {
+
+    /// Data
+    pub mod DATA {
+        /// Offset (0 bits)
+        pub const offset: u32 = 0;
+        /// Mask (8 bits: 0xff << 0)
+        pub const mask: u32 = 0xff << offset;
+        /// Read-only values (empty)
+        pub mod R {}
+        /// Write-only values (empty)
+        pub mod W {}
+        /// Read-write values (empty)
+        pub mod RW {}
+    }
+
+    /// Address
+    pub mod ADDR {
+        /// Offset (16 bits)
+        pub const offset: u32 = 16;
+        /// Mask (8 bits: 0xff << 16)
+        pub const mask: u32 = 0xff << offset;
+        /// Read-only values (empty)
+        pub mod R {}
+        /// Write-only values (empty)
+        pub mod W {}
+        /// Read-write values (empty)
+        pub mod RW {}
+    }
+
+    /// Read/Write control
+    pub mod RW {
+        /// Offset (22 bits)
+        pub const offset: u32 = 22;
+        /// Mask (1 bit: 1 << 22)
+        pub const mask: u32 = 1 << offset;
+        /// Read-only values (empty)
+        pub mod R {}
+        /// Write-only values (empty)
+        pub mod W {}
+        /// Read-write values (empty)
+        pub mod RW {}
+    }
+
+    /// New Read/Write transaction start
+    pub mod NEW {
+        /// Offset (25 bits)
+        pub const offset: u32 = 25;
+        /// Mask (1 bit: 1 << 25)
+        pub const mask: u32 = 1 << offset;
+        /// Read-only values (empty)
+        pub mod R {}
+        /// Write-only values (empty)
+        pub mod W {}
+        /// Read-write values (empty)
+        pub mod RW {}
+    }
+
+    /// Busy status flag
+    pub mod BUSY {
+        /// Offset (26 bits)
+        pub const offset: u32 = 26;
+        /// Mask (1 bit: 1 << 26)
+        pub const mask: u32 = 1 << offset;
+        /// Read-only values (empty)
+        pub mod R {}
+        /// Write-only values (empty)
+        pub mod W {}
+        /// Read-write values (empty)
+        pub mod RW {}
+    }
+
+    /// Done status flag
+    pub mod DONE {
+        /// Offset (27 bits)
+        pub const offset: u32 = 27;
+        /// Mask (1 bit: 1 << 27)
+        pub const mask: u32 = 1 << offset;
+        /// Read-only values (empty)
+        pub mod R {}
+        /// Write-only values (empty)
+        pub mod W {}
+        /// Read-write values (empty)
+        pub mod RW {}
+    }
+}
+
 /// OTG_HS general core configuration register
 pub mod GCCFG {
 
@@ -1886,7 +1974,10 @@ pub struct RegisterBlock {
     /// OTG_HS nonperiodic transmit FIFO/queue status register
     pub GNPTXSTS: RORegister<u32>,
 
-    _reserved1: [u32; 2],
+    _reserved1: u32,
+
+    /// OTG_HS PHY Control Register
+    pub PHYCR: RWRegister<u32>,
 
     /// OTG_HS general core configuration register
     pub GCCFG: RWRegister<u32>,
@@ -1927,6 +2018,7 @@ pub struct ResetValues {
     pub GRXFSIZ: u32,
     pub GNPTXFSIZ: u32,
     pub GNPTXSTS: u32,
+    pub PHYCR: u32,
     pub GCCFG: u32,
     pub CID: u32,
     pub HPTXFSIZ: u32,

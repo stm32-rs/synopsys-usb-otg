@@ -8,7 +8,7 @@
 pub use super::super::peripherals::otg_hs_global::Instance;
 pub use super::super::peripherals::otg_hs_global::{RegisterBlock, ResetValues};
 pub use super::super::peripherals::otg_hs_global::{
-    CID, DIEPTXF1, DIEPTXF2, DIEPTXF3, DIEPTXF4, DIEPTXF5, GAHBCFG, GCCFG, GINTMSK, GINTSTS,
+    CID, DIEPTXF1, DIEPTXF2, DIEPTXF3, DIEPTXF4, DIEPTXF5, GAHBCFG, PHYCR, GCCFG, GINTMSK, GINTSTS,
     GNPTXFSIZ, GNPTXSTS, GOTGCTL, GOTGINT, GRSTCTL, GRXFSIZ, GRXSTSP, GRXSTSR, GUSBCFG, HPTXFSIZ,
 };
 
@@ -39,6 +39,7 @@ pub mod OTG_HS_GLOBAL {
         GRXFSIZ: 0x00000200,
         GNPTXFSIZ: 0x00000200,
         GNPTXSTS: 0x00080200,
+        PHYCR: 0x00000000,
         GCCFG: 0x00000000,
         CID: 0x00001200,
         HPTXFSIZ: 0x02000600,

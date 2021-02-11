@@ -129,6 +129,8 @@ impl<USB: UsbPeripheral> UsbBus<USB> {
     #[cfg(feature = "hs")]
     /// Reads from a ULPI register in an external ULPI PHY.
     ///
+    /// Interrupts are disabled for the duration of the function call.
+    ///
     /// **Panics:** if `phy_type` is not `PhyType::ExternalHighSpeed`.
     ///
     /// # Example
@@ -143,7 +145,7 @@ impl<USB: UsbPeripheral> UsbBus<USB> {
     ///     (vid, pid)
     /// }
     /// ```
-    pub fn ulpi_read(&self, addr: u8) -> u8 {
+    pub fn ulpi_read(&self, addr: u8) -> core::result::Result<u8, UlpiError> {
         if self.peripheral.phy_type() != PhyType::ExternalHighSpeed {
             panic!("ulpi_read is only supported with external ULPI PHYs");
         }
@@ -152,25 +154,33 @@ impl<USB: UsbPeripheral> UsbBus<USB> {
             let regs = self.regs.borrow(cs);
 
             // Begin ULPI register read transaction
-            modify_reg!(otg_global, regs.global(), PHYCR, 
+            modify_reg!(otg_global, regs.global(), PHYCR,
                 NEW: 1,
                 RW: 0,
                 ADDR: addr as u32
             );
 
-            // Wait for transaction to complete
-            while read_reg!(otg_global, regs.global(), PHYCR, DONE) == 0 {}
-
-            // Read transaction data
-            return (read_reg!(otg_global, regs.global(), PHYCR, DATA) & 0xFF) as u8;
+            // ULPI transactions should take less than 1us. 1000 iterations should be enough even for fast MCUs.
+            let mut timeout = 1000;
+            while timeout > 0 {
+                // Wait for transaction to complete
+                if read_reg!(otg_global, regs.global(), PHYCR, DONE) != 0 {
+                    // Read transaction data
+                    return Ok((read_reg!(otg_global, regs.global(), PHYCR, DATA) & 0xFF) as u8);
+                }
+                timeout -= 1;
+            }
+            Err(UlpiError::Timeout)
         })
     }
 
     #[cfg(feature = "hs")]
     /// Writes to a ULPI register in an external ULPI PHY.
     ///
+    /// Interrupts are disabled for the duration of the function call.
+    ///
     /// **Panics:** if `phy_type` is not `PhyType::ExternalHighSpeed`.
-    pub fn ulpi_write(&self, addr: u8, data: u8) {
+    pub fn ulpi_write(&self, addr: u8, data: u8) -> core::result::Result<(), UlpiError> {
         if self.peripheral.phy_type() != PhyType::ExternalHighSpeed {
             panic!("ulpi_write is only supported with external ULPI PHYs");
         }
@@ -179,17 +189,33 @@ impl<USB: UsbPeripheral> UsbBus<USB> {
             let regs = self.regs.borrow(cs);
 
             // Begin ULPI register write transaction
-            modify_reg!(otg_global, regs.global(), PHYCR, 
+            modify_reg!(otg_global, regs.global(), PHYCR,
                 NEW: 1,
                 RW: 1,
                 ADDR: addr as u32,
                 DATA: data as u32
             );
 
-            // Wait for transaction to complete
-            while read_reg!(otg_global, regs.global(), PHYCR, DONE) == 0 {}
+            // ULPI transactions should take less than 1us. 1000 iterations should be enough even for fast MCUs.
+            let mut timeout = 1000;
+            while timeout > 0 {
+                // Wait for transaction to complete
+                if read_reg!(otg_global, regs.global(), PHYCR, DONE) != 0 {
+                    return Ok(());
+                }
+                timeout -= 1;
+            }
+            Err(UlpiError::Timeout)
         })
     }
+}
+
+#[cfg(feature = "hs")]
+#[derive(Debug)]
+/// Errors that can occur while interfacing with a ULPI PHY.
+pub enum UlpiError {
+    /// The action has timed out.
+    Timeout,
 }
 
 pub struct EndpointAllocator<USB> {

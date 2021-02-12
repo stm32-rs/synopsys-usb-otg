@@ -1,6 +1,6 @@
 [package]
 name = "synopsys-usb-otg"
-version = "0.2.3"
+version = "0.2.4"
 authors = ["Vadim Kaushan <admin@disasm.info>"]
 description = "'usb-device' implementation for Synopsys USB OTG IP cores"
 edition = "2018"

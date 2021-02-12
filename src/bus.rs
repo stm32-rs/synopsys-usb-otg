@@ -125,6 +125,97 @@ impl<USB: UsbPeripheral> UsbBus<USB> {
             }
         }
     }
+
+    #[cfg(feature = "hs")]
+    /// Reads from a ULPI register in an external ULPI PHY.
+    ///
+    /// Interrupts are disabled for the duration of the function call.
+    ///
+    /// **Panics:** if `phy_type` is not `PhyType::ExternalHighSpeed`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use synopsys_usb_otg::{UsbPeripheral, UsbBus};
+    /// fn read_usb_vid_pid<USB: UsbPeripheral>(bus: &UsbBus<USB>) -> (u16, u16) {
+    ///     let mut vid: u16 = bus.ulpi_read(0x00) as u16;
+    ///     vid |= (bus.ulpi_read(0x01) as u16) << 8;
+    ///     let mut pid: u16 = bus.ulpi_read(0x02) as u16;
+    ///     pid |= (bus.ulpi_read(0x03) as u16) << 8;
+    ///     (vid, pid)
+    /// }
+    /// ```
+    pub fn ulpi_read(&self, addr: u8) -> core::result::Result<u8, UlpiError> {
+        if self.peripheral.phy_type() != PhyType::ExternalHighSpeed {
+            panic!("ulpi_read is only supported with external ULPI PHYs");
+        }
+
+        interrupt::free(|cs| {
+            let regs = self.regs.borrow(cs);
+
+            // Begin ULPI register read transaction
+            modify_reg!(otg_global, regs.global(), PHYCR,
+                NEW: 1,
+                RW: 0,
+                ADDR: addr as u32
+            );
+
+            // ULPI transactions should take less than 1us. 1000 iterations should be enough even for fast MCUs.
+            let mut timeout = 1000;
+            while timeout > 0 {
+                // Wait for transaction to complete
+                if read_reg!(otg_global, regs.global(), PHYCR, DONE) != 0 {
+                    // Read transaction data
+                    return Ok((read_reg!(otg_global, regs.global(), PHYCR, DATA) & 0xFF) as u8);
+                }
+                timeout -= 1;
+            }
+            Err(UlpiError::Timeout)
+        })
+    }
+
+    #[cfg(feature = "hs")]
+    /// Writes to a ULPI register in an external ULPI PHY.
+    ///
+    /// Interrupts are disabled for the duration of the function call.
+    ///
+    /// **Panics:** if `phy_type` is not `PhyType::ExternalHighSpeed`.
+    pub fn ulpi_write(&self, addr: u8, data: u8) -> core::result::Result<(), UlpiError> {
+        if self.peripheral.phy_type() != PhyType::ExternalHighSpeed {
+            panic!("ulpi_write is only supported with external ULPI PHYs");
+        }
+
+        interrupt::free(|cs| {
+            let regs = self.regs.borrow(cs);
+
+            // Begin ULPI register write transaction
+            modify_reg!(otg_global, regs.global(), PHYCR,
+                NEW: 1,
+                RW: 1,
+                ADDR: addr as u32,
+                DATA: data as u32
+            );
+
+            // ULPI transactions should take less than 1us. 1000 iterations should be enough even for fast MCUs.
+            let mut timeout = 1000;
+            while timeout > 0 {
+                // Wait for transaction to complete
+                if read_reg!(otg_global, regs.global(), PHYCR, DONE) != 0 {
+                    return Ok(());
+                }
+                timeout -= 1;
+            }
+            Err(UlpiError::Timeout)
+        })
+    }
+}
+
+#[cfg(feature = "hs")]
+#[derive(Debug)]
+/// Errors that can occur while interfacing with a ULPI PHY.
+pub enum UlpiError {
+    /// The action has timed out.
+    Timeout,
 }
 
 pub struct EndpointAllocator<USB> {
@@ -292,7 +383,7 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
                         PHYSEL: 0 // ULPI or UTMI
                     );
 
-                    // Select vbus source
+                    // Select VBUS source
                     modify_reg!(otg_global, regs.global(), GUSBCFG,
                         ULPIEVBUSD: 0,
                         ULPIEVBUSI: 0
@@ -309,7 +400,23 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
 
                     self.peripheral.setup_internal_hs_phy();
                 }
-                PhyType::ExternalHighSpeed => unimplemented!()
+                PhyType::ExternalHighSpeed => {
+                    // Turn off embedded PHY
+                    modify_reg!(otg_global, regs.global(), GCCFG, PWRDWN: 0);
+
+                    // Init The ULPI Interface
+                    modify_reg!(otg_global, regs.global(), GUSBCFG,
+                        TSDPS: 0,
+                        ULPIFSLS: 0,
+                        PHYSEL: 0 // ULPI or UTMI
+                    );
+
+                    // Select VBUS source
+                    modify_reg!(otg_global, regs.global(), GUSBCFG,
+                        ULPIEVBUSD: 0,
+                        ULPIEVBUSI: 0
+                    );
+                }
             }
 
             // Perform core soft-reset

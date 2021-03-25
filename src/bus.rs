@@ -481,6 +481,8 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
                 PFIVL: 0b00,
                 DSPD: speed
             );
+            #[cfg(feature = "xcvrdly")]
+            modify_reg!(otg_device, regs.device(), DCFG, XCVRDLY: 1);
 
             // unmask EP interrupts
             write_reg!(otg_device, regs.device(), DIEPMSK, XFRCM: 1);

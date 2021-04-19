@@ -57,9 +57,6 @@ pub struct RegisterBlock {
     /// OTG_FS power and clock gating control register
     pub PCGCCTL: RWRegister<u32>,
 }
-pub struct ResetValues {
-    pub PCGCCTL: u32,
-}
 #[cfg(not(feature = "nosync"))]
 pub struct Instance {
     pub(crate) addr: u32,

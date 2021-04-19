@@ -6,7 +6,7 @@
 
 #[cfg(not(feature = "nosync"))]
 pub use super::super::peripherals::otg_hs_global::Instance;
-pub use super::super::peripherals::otg_hs_global::{RegisterBlock, ResetValues};
+pub use super::super::peripherals::otg_hs_global::RegisterBlock;
 pub use super::super::peripherals::otg_hs_global::{
     CID, DIEPTXF1, DIEPTXF2, DIEPTXF3, DIEPTXF4, DIEPTXF5, GAHBCFG, PHYCR, GCCFG, GINTMSK, GINTSTS,
     GNPTXFSIZ, GNPTXSTS, GOTGCTL, GOTGINT, GRSTCTL, GRXFSIZ, GRXSTSP, GRXSTSR, GUSBCFG, HPTXFSIZ,
@@ -14,8 +14,6 @@ pub use super::super::peripherals::otg_hs_global::{
 
 /// Access functions for the OTG_HS_GLOBAL peripheral instance
 pub mod OTG_HS_GLOBAL {
-    use super::ResetValues;
-
     #[cfg(not(feature = "nosync"))]
     use super::Instance;
 
@@ -23,31 +21,6 @@ pub mod OTG_HS_GLOBAL {
     const INSTANCE: Instance = Instance {
         addr: 0x40040000,
         _marker: ::core::marker::PhantomData,
-    };
-
-    /// Reset values for each field in OTG_HS_GLOBAL
-    pub const reset: ResetValues = ResetValues {
-        GOTGCTL: 0x00000800,
-        GOTGINT: 0x00000000,
-        GAHBCFG: 0x00000000,
-        GUSBCFG: 0x00000A00,
-        GRSTCTL: 0x20000000,
-        GINTSTS: 0x04000020,
-        GINTMSK: 0x00000000,
-        GRXSTSR: 0x00000000,
-        GRXSTSP: 0x00000000,
-        GRXFSIZ: 0x00000200,
-        GNPTXFSIZ: 0x00000200,
-        GNPTXSTS: 0x00080200,
-        PHYCR: 0x00000000,
-        GCCFG: 0x00000000,
-        CID: 0x00001200,
-        HPTXFSIZ: 0x02000600,
-        DIEPTXF1: 0x02000400,
-        DIEPTXF2: 0x02000400,
-        DIEPTXF3: 0x02000400,
-        DIEPTXF4: 0x02000400,
-        DIEPTXF5: 0x02000400,
     };
 }
 

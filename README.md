@@ -14,8 +14,8 @@ started by [@mvirkkunen](https://github.com/mvirkkunen).
 * `STM32F429xx` (OTG_FS and OTG_HS in FS mode)
 * `STM32F401xx`
 * `STM32F446xx` (OTG_FS and OTG_HS in FS mode)
-* `STM32F723xx` (OTG_FS)
-* `STM32H7xxxx` (OTG_HS1 in FS mode)
+* `STM32F723xx` (OTG_FS and OTG_HS with internal HS PHY)
+* `STM32H7xxxx` (OTG1_HS and OTG2_HS in FS mode, and OTG1_HS with external HS PHY)
 * And others...
 
 
@@ -27,7 +27,7 @@ This trait declares all the peripheral properties that may vary from one device 
 Additionally, hal should pass `fs` of `hs` feature to the `synopsys-usb-otg` library to
 define a peripheral type:
 * `fs` - for FullSpeed peripherals
-* `hs` - for HighSpeed peripherals (only FS mode with internal PHY is supported)
+* `hs` - for HighSpeed peripherals
 
 Only one peripheral type can be selected at the moment.
 

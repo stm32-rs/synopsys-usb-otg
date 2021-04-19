@@ -7,12 +7,10 @@
 #[cfg(not(feature = "nosync"))]
 pub use super::super::peripherals::otg_fs_pwrclk::Instance;
 pub use super::super::peripherals::otg_fs_pwrclk::PCGCCTL;
-pub use super::super::peripherals::otg_fs_pwrclk::{RegisterBlock, ResetValues};
+pub use super::super::peripherals::otg_fs_pwrclk::RegisterBlock;
 
 /// Access functions for the OTG_FS_PWRCLK peripheral instance
 pub mod OTG_FS_PWRCLK {
-    use super::ResetValues;
-
     #[cfg(not(feature = "nosync"))]
     use super::Instance;
 
@@ -22,10 +20,6 @@ pub mod OTG_FS_PWRCLK {
         _marker: ::core::marker::PhantomData,
     };
 
-    /// Reset values for each field in OTG_FS_PWRCLK
-    pub const reset: ResetValues = ResetValues {
-        PCGCCTL: 0x00000000,
-    };
 }
 
 /// Raw pointer to OTG_FS_PWRCLK
@@ -41,8 +35,6 @@ pub const OTG_FS_PWRCLK: *const RegisterBlock = 0x50000e00 as *const _;
 
 /// Access functions for the OTG_HS_PWRCLK peripheral instance
 pub mod OTG_HS_PWRCLK {
-    use super::ResetValues;
-
     #[cfg(not(feature = "nosync"))]
     use super::Instance;
 
@@ -52,10 +44,6 @@ pub mod OTG_HS_PWRCLK {
         _marker: ::core::marker::PhantomData,
     };
 
-    /// Reset values for each field in OTG_HS_PWRCLK
-    pub const reset: ResetValues = ResetValues {
-        PCGCCTL: 0x00000000,
-    };
 }
 
 /// Raw pointer to OTG_HS_PWRCLK

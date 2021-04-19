@@ -1736,26 +1736,6 @@ pub struct RegisterBlock {
     /// OTG_FS device IN endpoint transmit FIFO size register (OTG_FS_DIEPTXF2)
     pub DIEPTXF3: RWRegister<u32>,
 }
-pub struct ResetValues {
-    pub GOTGCTL: u32,
-    pub GOTGINT: u32,
-    pub GAHBCFG: u32,
-    pub GUSBCFG: u32,
-    pub GRSTCTL: u32,
-    pub GINTSTS: u32,
-    pub GINTMSK: u32,
-    pub GRXSTSR: u32,
-    pub GRXSTSP: u32,
-    pub GRXFSIZ: u32,
-    pub DIEPTXF0: u32,
-    pub GNPTXSTS: u32,
-    pub GCCFG: u32,
-    pub CID: u32,
-    pub HPTXFSIZ: u32,
-    pub DIEPTXF1: u32,
-    pub DIEPTXF2: u32,
-    pub DIEPTXF3: u32,
-}
 #[cfg(not(feature = "nosync"))]
 pub struct Instance {
     pub(crate) addr: u32,

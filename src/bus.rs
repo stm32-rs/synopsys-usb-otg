@@ -432,9 +432,9 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
             // Configuring Vbus sense and SOF output
             match core_id {
                 0x0000_1200 | 0x0000_1100 => {
-                    // F429-like chips have the GCCFG.VBUSBSEN bit
+                    // F429-like chips have the GCCFG.NOVBUSSENS bit
 
-                    //modify_reg!(otg_global, regs.global, GCCFG, VBUSBSEN: 1);
+                    //modify_reg!(otg_global, regs.global, GCCFG, NOVBUSSENS: 1);
                     modify_reg!(otg_global, regs.global(), GCCFG, |r| r | (1 << 21));
 
                     modify_reg!(otg_global, regs.global(), GCCFG, VBUSASEN: 0, VBUSBSEN: 0, SOFOUTEN: 0);

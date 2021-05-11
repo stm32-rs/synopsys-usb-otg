@@ -1,4 +1,5 @@
 use core::marker::PhantomData;
+use embedded_hal::blocking::delay::DelayMs;
 use usb_device::{Result, UsbDirection, UsbError};
 use usb_device::bus::{UsbBusAllocator, PollResult};
 use usb_device::endpoint::{EndpointType, EndpointAddress};
@@ -124,6 +125,17 @@ impl<USB: UsbPeripheral> UsbBus<USB> {
                 ep.deconfigure(cs);
             }
         }
+    }
+
+    pub fn force_reset(&self, delay: &mut impl DelayMs<u32>) -> Result<()> {
+        interrupt::free(|cs| {
+            let regs = self.regs.borrow(cs);
+            write_reg!(otg_device, regs.device(), DCTL, SDIS: 1); // Soft disconnect
+            delay.delay_ms(3);
+            write_reg!(otg_device, regs.device(), DCTL, SDIS: 0); // Soft connect
+            delay.delay_ms(3);
+        });
+        Ok(())
     }
 
     #[cfg(feature = "hs")]

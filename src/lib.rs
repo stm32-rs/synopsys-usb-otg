@@ -46,6 +46,17 @@ pub unsafe trait UsbPeripheral: Send + Sync {
     /// Returns PHY type that should be used for USB peripheral
     fn phy_type(&self) -> PhyType { PhyType::InternalFullSpeed }
 
+    /// Enable ULPI Transceiver Delay
+    ///
+    /// Some ULPI PHYs like the Microchip USB334x series require a delay between the ULPI register write that initiates
+    /// the HS Chirp and the subsequent transmit command, otherwise the HS Chirp does not get executed and the deivce
+    /// enumerates in FS mode.
+    ///
+    /// Some USB Link IP like those in the STM32H7 series support adding this delay to work with the affected PHYs.
+    fn use_transceiver_delay(&self) -> bool {
+        false
+    }
+
     /// Performs initial setup of the internal high-speed PHY
     ///
     /// This function should turn on LDO and PLL and wait for PHY clock to become stable.

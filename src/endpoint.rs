@@ -93,7 +93,7 @@ impl EndpointIn {
             write_reg!(endpoint_in, regs, DIEPCTL,
                 SNAK: 1,
                 USBAEP: 1,
-                EPTYP: self.descriptor.ep_type as u32,
+                EPTYP: self.descriptor.ep_type.to_bm_attributes() as u32,
                 SD0PID_SEVNFRM: 1,
                 TXFNUM: self.index() as u32,
                 MPSIZ: self.descriptor.max_packet_size as u32
@@ -202,7 +202,7 @@ impl EndpointOut {
                 CNAK: 1,
                 EPENA: 1,
                 USBAEP: 1,
-                EPTYP: self.descriptor.ep_type as u32,
+                EPTYP: self.descriptor.ep_type.to_bm_attributes() as u32,
                 MPSIZ: self.descriptor.max_packet_size as u32
             );
         }

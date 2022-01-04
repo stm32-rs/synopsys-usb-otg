@@ -67,6 +67,21 @@ pub mod DCFG {
         pub mod RW {}
     }
 
+    #[cfg(feature = "xcvrdly")]
+    /// Transceiver Delay
+    pub mod XCVRDLY {
+        /// Offset (14 bits)
+        pub const offset: u32 = 14;
+        /// Mask (1 bit: 1 << 14)
+        pub const mask: u32 = 1 << offset;
+        /// Read-only values (empty)
+        pub mod R {}
+        /// Write-only values (empty)
+        pub mod W {}
+        /// Read-write values (empty)
+        pub mod RW {}
+    }
+
     /// Periodic scheduling interval
     pub mod PERSCHIVL {
         /// Offset (24 bits)

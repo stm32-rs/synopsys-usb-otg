@@ -31,6 +31,13 @@ define a peripheral type:
 
 Only one peripheral type can be selected at the moment.
 
+### ULPI Transciever Delay
+
+Some ULPI PHYs like the Microchip USB334x series require a delay between the ULPI register write that initiates
+the HS Chirp and the subsequent transmit command, otherwise the HS Chirp does not get executed and the deivce
+enumerates in FS mode. Some USB Link IP like those in the STM32H7 series support adding this delay to work with the
+affected PHYs. Enable the `xcvrdly` feature to add this delay.
+
 ## Examples
 
 See the [usb-otg-workspace](https://github.com/Disasm/usb-otg-workspace) repo for different device-specific examples.

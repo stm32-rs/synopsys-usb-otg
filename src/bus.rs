@@ -443,7 +443,7 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
 
             // Configuring Vbus sense and SOF output
             match core_id {
-                0x0000_1200 | 0x0000_1100 => {
+                0x0000_1000 | 0x0000_1200 | 0x0000_1100 => {
                     // F429-like chips have the GCCFG.NOVBUSSENS bit
 
                     //modify_reg!(otg_global, regs.global, GCCFG, NOVBUSSENS: 1);
@@ -614,20 +614,24 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
                     0b01 | 0b11 => {
                         // Full speed
 
-                        // From RM0431 (F72xx), RM0090 (F429)
-                        trdt = match self.peripheral.ahb_frequency_hz() {
-                            0..=14_199_999 => panic!("AHB frequency is too low"),
-                            14_200_000..=14_999_999 => 0xF,
-                            15_000_000..=15_999_999 => 0xE,
-                            16_000_000..=17_199_999 => 0xD,
-                            17_200_000..=18_499_999 => 0xC,
-                            18_500_000..=19_999_999 => 0xB,
-                            20_000_000..=21_799_999 => 0xA,
-                            21_800_000..=23_999_999 => 0x9,
-                            24_000_000..=27_499_999 => 0x8,
-                            27_500_000..=31_999_999 => 0x7, // 27.7..32 in code from CubeIDE
-                            32_000_000..=u32::MAX => 0x6,
-                        };
+                        if core_id == 0x0000_1000 {
+                            trdt = 0x05;
+                        } else {
+                            // From RM0431 (F72xx), RM0090 (F429)
+                            trdt = match self.peripheral.ahb_frequency_hz() {
+                                0..=14_199_999 => panic!("AHB frequency is too low"),
+                                14_200_000..=14_999_999 => 0xF,
+                                15_000_000..=15_999_999 => 0xE,
+                                16_000_000..=17_199_999 => 0xD,
+                                17_200_000..=18_499_999 => 0xC,
+                                18_500_000..=19_999_999 => 0xB,
+                                20_000_000..=21_799_999 => 0xA,
+                                21_800_000..=23_999_999 => 0x9,
+                                24_000_000..=27_499_999 => 0x8,
+                                27_500_000..=31_999_999 => 0x7, // 27.7..32 in code from CubeIDE
+                                32_000_000..=u32::MAX => 0x6,
+                            };
+                        }
                     }
                     _ => unimplemented!()
                 }
@@ -673,7 +677,7 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
                             read_reg!(otg_global, regs.global(), GRXSTSP); // pop GRXSTSP
 
                             // Re-enable the endpoint, F429-like chips only
-                            if core_id == 0x0000_1200 || core_id == 0x0000_1100 {
+                            if core_id == 0x0000_1000 || core_id == 0x0000_1200 || core_id == 0x0000_1100 {
                                 let ep = regs.endpoint_out(epnum as usize);
                                 modify_reg!(endpoint_out, ep, DOEPCTL, CNAK: 1, EPENA: 1);
                             }

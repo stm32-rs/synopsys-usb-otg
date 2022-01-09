@@ -189,15 +189,18 @@ impl EndpointOut {
         }
     }
 
-    pub fn deconfigure(&self, _cs: CriticalSection<'_>) {
+    pub fn deconfigure(&self, _cs: CriticalSection<'_>, core_id: u32) {
         let regs = self.usb.endpoint_out(self.index() as usize);
 
-        // deactivating endpoint
-        modify_reg!(endpoint_out, regs, DOEPCTL, USBAEP: 0);
+        // GD32VF103 doesn't support endpoint deactivation after reset, so skip this.
+        if core_id > 0x0000_1000 {
+            // deactivating endpoint
+            modify_reg!(endpoint_out, regs, DOEPCTL, USBAEP: 0);
 
-        // disabling endpoint
-        if read_reg!(endpoint_out, regs, DOEPCTL, EPENA) != 0 && self.index() != 0 {
-            modify_reg!(endpoint_out, regs, DOEPCTL, EPDIS: 1)
+            // disabling endpoint
+            if read_reg!(endpoint_out, regs, DOEPCTL, EPENA) != 0 && self.index() != 0 {
+                modify_reg!(endpoint_out, regs, DOEPCTL, EPDIS: 1)
+            }
         }
 
         // clean EP interrupts

@@ -108,7 +108,7 @@ impl<USB: UsbPeripheral> UsbBus<USB> {
         }
     }
 
-    fn deconfigure_all(&self, cs: &CriticalSection) {
+    fn deconfigure_all(&self, cs: &CriticalSection, core_id: u32) {
         let regs = self.regs.borrow(cs);
 
         // disable interrupts
@@ -122,7 +122,7 @@ impl<USB: UsbPeripheral> UsbBus<USB> {
 
         for ep in &self.allocator.endpoints_out {
             if let Some(ep) = ep {
-                ep.deconfigure(cs);
+                ep.deconfigure(cs, core_id);
             }
         }
     }
@@ -586,7 +586,7 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
             if reset != 0 {
                 write_reg!(otg_global, regs.global(), GINTSTS, USBRST: 1);
 
-                self.deconfigure_all(cs);
+                self.deconfigure_all(cs, core_id);
 
                 // Flush RX
                 modify_reg!(otg_global, regs.global(), GRSTCTL, RXFFLSH: 1);

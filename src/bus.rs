@@ -666,12 +666,16 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
                             ep_setup |= 1 << epnum;
                         }
                         0x03 | 0x04 => { // OUT completed | SETUP completed
+                            // It's important to read this register before re-enabling the relevant
+                            // endpoint on GD32VF103, otherwise DOEPCTL.EPENA resets back to 0 after
+                            // reading GRXSTSP.
+                            read_reg!(otg_global, regs.global(), GRXSTSP); // pop GRXSTSP
+
                             // Re-enable the endpoint, F429-like chips only
                             if core_id == 0x0000_1200 || core_id == 0x0000_1100 {
                                 let ep = regs.endpoint_out(epnum as usize);
                                 modify_reg!(endpoint_out, ep, DOEPCTL, CNAK: 1, EPENA: 1);
                             }
-                            read_reg!(otg_global, regs.global(), GRXSTSP); // pop GRXSTSP
                         }
                         _ => {
                             read_reg!(otg_global, regs.global(), GRXSTSP); // pop GRXSTSP

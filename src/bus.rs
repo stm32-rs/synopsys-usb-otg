@@ -668,13 +668,24 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
                                 modify_reg!(otg_global, regs.global(), GRSTCTL, TXFNUM: epnum, TXFFLSH: 1);
                                 while read_reg!(otg_global, regs.global(), GRSTCTL, TXFFLSH) == 1 {}
                             }
-                            ep_setup |= 1 << epnum;
                         }
                         0x03 | 0x04 => { // OUT completed | SETUP completed
                             // It's important to read this register before re-enabling the relevant
                             // endpoint on GD32VF103, otherwise DOEPCTL.EPENA resets back to 0 after
                             // reading GRXSTSP.
                             read_reg!(otg_global, regs.global(), GRXSTSP); // pop GRXSTSP
+
+                            if status == 0x04 && core_id == 0x0000_1000 {
+                                // For GD32VF103 report SETUP event only after the "SETUP completed"
+                                // event. For newer chips SETUP event is reported after successful
+                                // read from the endpoint FIFO to the buffer.
+                                ep_setup |= 1 << epnum;
+
+                                // We indicate presence of SETUP packet here, because otherwise
+                                // usb-device starts IN transfer after the "SETUP received" event.
+                                // This transfer gets interrupted by the "SETUP completed" event:
+                                // USB peripheral automatically disables EP0 IN endpoint.
+                            }
 
                             // Re-enable the endpoint, F429-like chips only
                             if core_id == 0x0000_1000 || core_id == 0x0000_1200 || core_id == 0x0000_1100 {
@@ -727,7 +738,9 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
                                 ep_out |= 1 << ep.address().index();
                             },
                             EndpointBufferState::DataSetup => {
-                                ep_setup |= 1 << ep.address().index();
+                                if core_id > 0x0000_1000 {
+                                    ep_setup |= 1 << ep.address().index();
+                                }
                             },
                             EndpointBufferState::Empty => {},
                         }

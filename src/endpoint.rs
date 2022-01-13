@@ -139,6 +139,13 @@ impl EndpointIn {
             }
         }
 
+        #[cfg(feature = "fs")]
+        write_reg!(endpoint_in, ep, DIEPTSIZ, PKTCNT: 1, XFRSIZ: buf.len() as u32);
+        #[cfg(feature = "hs")]
+        write_reg!(endpoint_in, ep, DIEPTSIZ, MCNT: 1, PKTCNT: 1, XFRSIZ: buf.len() as u32);
+
+        modify_reg!(endpoint_in, ep, DIEPCTL, CNAK: 1, EPENA: 1);
+
         match self.descriptor.ep_type {
             // Isochronous endpoints must set the correct even/odd frame bit to
             // correspond with the next frame's number.
@@ -150,18 +157,11 @@ impl EndpointIn {
                     modify_reg!(endpoint_in, ep, DIEPCTL, SD0PID_SEVNFRM: 1);
                 } else {
                     // Previous frame number is even, so upcoming frame is odd
-                    modify_reg!(endpoint_in, ep, DIEPCTL, SODDFRM_SD1PID: 1);
+                    modify_reg!(endpoint_in, ep, DIEPCTL, SODDFRM: 1);
                 }
             },
             _ => {}
         }
-
-        #[cfg(feature = "fs")]
-        write_reg!(endpoint_in, ep, DIEPTSIZ, PKTCNT: 1, XFRSIZ: buf.len() as u32);
-        #[cfg(feature = "hs")]
-        write_reg!(endpoint_in, ep, DIEPTSIZ, MCNT: 1, PKTCNT: 1, XFRSIZ: buf.len() as u32);
-
-        modify_reg!(endpoint_in, ep, DIEPCTL, CNAK: 1, EPENA: 1);
 
         fifo_write(self.usb, self.index(), buf);
 

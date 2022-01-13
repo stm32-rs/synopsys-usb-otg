@@ -498,7 +498,8 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
             write_reg!(otg_global, regs.global(), GINTMSK,
                 USBRST: 1, ENUMDNEM: 1,
                 USBSUSPM: 1, WUIM: 1,
-                IEPINT: 1, RXFLVLM: 1
+                IEPINT: 1, RXFLVLM: 1,
+                SOFM: 1
             );
 
             // clear pending interrupts

@@ -152,7 +152,7 @@ impl EndpointIn {
             EndpointType::Isochronous(_) => {
                 // Previous frame number is OTG_DSTS.FNSOF
                 let frame_number = read_reg!(otg_device, device, DSTS, FNSOF);
-                if frame_number & 0x1 == 1 {
+                if frame_number & 0x1 == 0 {
                     // Previous frame number is odd, so upcoming frame is even
                     modify_reg!(endpoint_in, ep, DIEPCTL, SD0PID_SEVNFRM: 1);
                 } else {

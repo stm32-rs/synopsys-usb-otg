@@ -144,8 +144,6 @@ impl EndpointIn {
         #[cfg(feature = "hs")]
         write_reg!(endpoint_in, ep, DIEPTSIZ, MCNT: 1, PKTCNT: 1, XFRSIZ: buf.len() as u32);
 
-        modify_reg!(endpoint_in, ep, DIEPCTL, CNAK: 1, EPENA: 1);
-
         match self.descriptor.ep_type {
             // Isochronous endpoints must set the correct even/odd frame bit to
             // correspond with the next frame's number.
@@ -162,6 +160,8 @@ impl EndpointIn {
             },
             _ => {}
         }
+
+        modify_reg!(endpoint_in, ep, DIEPCTL, CNAK: 1, EPENA: 1);
 
         fifo_write(self.usb, self.index(), buf);
 

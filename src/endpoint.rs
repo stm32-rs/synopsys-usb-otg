@@ -155,6 +155,9 @@ impl EndpointIn {
                     modify_reg!(endpoint_in, ep, DIEPCTL, SD0PID_SEVNFRM: 1);
                 } else {
                     // Previous frame number is even, so upcoming frame is odd
+                    #[cfg(feature = "fs")]
+                    modify_reg!(endpoint_in, ep, DIEPCTL, SODDFRM_SD1PID: 1);
+                    #[cfg(feature = "hs")]
                     modify_reg!(endpoint_in, ep, DIEPCTL, SODDFRM: 1);
                 }
             },

@@ -153,7 +153,7 @@ impl<USB: UsbPeripheral> EndpointMemoryAllocator<USB> {
         }
 
         let mut used = self.total_rx_buffer_size_words() as usize + 30;
-        for sz in &self.tx_fifo_size_words {
+        for sz in &self.tx_fifo_size_words[0..ep_number] {
             used += core::cmp::max(*sz as usize, 16);
         }
         used -= 16;

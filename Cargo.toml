@@ -16,6 +16,9 @@ embedded-hal = "0.2.4"
 vcell = "0.1.0"
 usb-device = "0.2.3"
 
+[patch.crates-io]
+usb-device = { path = "../usb-device" }
+
 [package.metadata.docs.rs]
 features = ['cortex-m', 'fs']
 

@@ -152,11 +152,9 @@ impl<USB: UsbPeripheral> EndpointMemoryAllocator<USB> {
             return Err(UsbError::InvalidEndpoint)
         }
 
-        let mut used = self.total_rx_buffer_size_words() as usize + 30;
-        for sz in &self.tx_fifo_size_words {
-            used += core::cmp::max(*sz as usize, 16);
-        }
-        used -= 16;
+        let used = 30
+            + self.total_rx_buffer_size_words() as usize
+            + self.tx_fifo_size_words.iter().sum::<u16>() as usize;
 
         let size_words = core::cmp::max((size + 3) / 4, 16);
         if (used + size_words) > USB::FIFO_DEPTH_WORDS {

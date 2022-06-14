@@ -2,11 +2,6 @@
 
 use vcell::VolatileCell;
 
-#[cfg(feature = "cortex-m")]
-pub use cortex_m::interrupt;
-#[cfg(feature = "riscv")]
-pub use riscv::interrupt;
-
 use crate::ral::register::RWRegister;
 use crate::ral::{
     endpoint0_out, endpoint_in, endpoint_out, otg_device, otg_global, otg_global_dieptxfx,

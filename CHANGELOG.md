@@ -7,9 +7,16 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+
+### Changed
+
+* Use `critical-section` crate for critical sections.
+
+
 ## [v0.4.0] - 2023-11-18
 
 ### Changed
+
 * `usb-device` version bumped to v0.3.0
 
 

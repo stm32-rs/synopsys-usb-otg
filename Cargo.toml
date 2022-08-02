@@ -17,7 +17,7 @@ vcell = "0.1.0"
 usb-device = "0.2.3"
 
 [patch.crates-io]
-usb-device = { path = "../usb-device" }
+usb-device = { git = "https://github.com/dgoodlad/usb-device", branch = "crabdac" }
 
 [package.metadata.docs.rs]
 features = ['cortex-m', 'fs']

@@ -431,13 +431,6 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
                 }
             }
 
-            // Delay a few cycles after selecting PHY before doing a core reset
-            // https://community.st.com/s/question/0D53W00000znL7jSAE/stm32h745-usbotg-intermittently-fails-to-respond-to-core-reset
-            #[cfg(not(feature = "cortex-m"))]
-            for _ in 0..500000 {};
-            #[cfg(feature = "cortex-m")]
-            cortex_m::asm::delay(25600);
-
             // Perform core soft-reset
             while read_reg!(otg_global, regs.global(), GRSTCTL, AHBIDL) == 0 {}
             modify_reg!(otg_global, regs.global(), GRSTCTL, CSRST: 1);

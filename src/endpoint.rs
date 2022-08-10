@@ -147,7 +147,7 @@ impl EndpointIn {
         match self.descriptor.ep_type {
             // Isochronous endpoints must set the correct even/odd frame bit to
             // correspond with the next frame's number.
-            EndpointType::Isochronous(_) => {
+            EndpointType::Isochronous{..} => {
                 // Previous frame number is OTG_DSTS.FNSOF
                 let frame_number = read_reg!(otg_device, device, DSTS, FNSOF);
                 if frame_number & 0x1 == 1 {
@@ -233,7 +233,7 @@ impl EndpointOut {
         match self.descriptor.ep_type {
             // Isochronous endpoints must set the correct even/odd frame bit to
             // correspond with the next frame's number.
-            EndpointType::Isochronous(_) => {
+            EndpointType::Isochronous{..} => {
                 // Previous frame number is OTG_DSTS.FNSOF
                 let frame_number = read_reg!(otg_device, device, DSTS, FNSOF);
                 if frame_number & 0x1 == 1 {

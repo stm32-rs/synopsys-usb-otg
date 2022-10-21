@@ -1,16 +1,16 @@
+use critical_section::{CriticalSection, Mutex};
 use usb_device::{Result, UsbError, UsbDirection};
 use usb_device::endpoint::EndpointAddress;
 use crate::endpoint_memory::{EndpointBuffer, EndpointBufferState};
 use crate::ral::{read_reg, write_reg, modify_reg, endpoint_in, endpoint_out, endpoint0_out};
 use crate::target::{fifo_write, UsbRegisters};
-use crate::target::interrupt::{self, CriticalSection, Mutex};
 use core::ops::{Deref, DerefMut};
 use core::cell::RefCell;
 use crate::transition::EndpointDescriptor;
 use crate::UsbPeripheral;
 
 pub fn set_stalled(usb: UsbRegisters, address: EndpointAddress, stalled: bool) {
-    interrupt::free(|_| {
+    critical_section::with(|_| {
         match address.direction() {
             UsbDirection::Out => {
                 let ep = usb.endpoint_out(address.index() as usize);
@@ -74,7 +74,7 @@ impl EndpointIn {
         }
     }
 
-    pub fn configure(&self, _cs: &CriticalSection) {
+    pub fn configure(&self, _cs: CriticalSection<'_>) {
         if self.index() == 0 {
             let mpsiz = match self.descriptor.max_packet_size {
                 8 => 0b11,
@@ -100,7 +100,7 @@ impl EndpointIn {
         }
     }
 
-    pub fn deconfigure(&self, _cs: &CriticalSection) {
+    pub fn deconfigure(&self, _cs: CriticalSection<'_>) {
         let regs = self.usb.endpoint_in(self.index() as usize);
 
         // deactivating endpoint
@@ -163,7 +163,7 @@ impl EndpointOut {
         }
     }
 
-    pub fn configure(&self, _cs: &CriticalSection) {
+    pub fn configure(&self, _cs: CriticalSection<'_>) {
         if self.index() == 0 {
             let mpsiz = match self.descriptor.max_packet_size {
                 8 => 0b11,
@@ -189,7 +189,7 @@ impl EndpointOut {
         }
     }
 
-    pub fn deconfigure(&self, _cs: &CriticalSection) {
+    pub fn deconfigure(&self, _cs: CriticalSection<'_>) {
         let regs = self.usb.endpoint_out(self.index() as usize);
 
         // deactivating endpoint
@@ -205,13 +205,13 @@ impl EndpointOut {
     }
 
     pub fn read(&self, buf: &mut [u8]) -> Result<usize> {
-        interrupt::free(|cs| {
+        critical_section::with(|cs| {
             self.buffer.borrow(cs).borrow_mut().read_packet(buf)
         })
     }
 
     pub fn buffer_state(&self) -> EndpointBufferState {
-        interrupt::free(|cs| {
+        critical_section::with(|cs| {
             self.buffer.borrow(cs).borrow().state()
         })
     }

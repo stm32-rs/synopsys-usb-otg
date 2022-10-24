@@ -1719,10 +1719,16 @@ pub struct RegisterBlock {
     /// OTG_FS general core configuration register (OTG_FS_GCCFG)
     pub GCCFG: RWRegister<u32>,
 
+    #[cfg(feature = "esp32sx")]
+    _reserved_esp32sx: u32,
+
     /// core ID register
     pub CID: RWRegister<u32>,
 
+    #[cfg(not(feature = "esp32sx"))]
     _reserved2: [u32; 48],
+    #[cfg(feature = "esp32sx")]
+    _reserved2: [u32; 47],
 
     /// OTG_FS Host periodic transmit FIFO size register (OTG_FS_HPTXFSIZ)
     pub HPTXFSIZ: RWRegister<u32>,

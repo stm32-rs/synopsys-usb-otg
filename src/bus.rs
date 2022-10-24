@@ -1,16 +1,18 @@
-use critical_section::{CriticalSection, Mutex};
-use core::marker::PhantomData;
-use embedded_hal::blocking::delay::DelayMs;
-use usb_device::{Result, UsbDirection, UsbError};
-use usb_device::bus::{UsbBusAllocator, PollResult};
-use usb_device::endpoint::{EndpointType, EndpointAddress};
+use crate::ral::{
+    modify_reg, otg_device, otg_global, otg_global_dieptxfx, otg_pwrclk, read_reg, write_reg,
+};
 use crate::transition::{EndpointConfig, EndpointDescriptor};
-use crate::ral::{read_reg, write_reg, modify_reg, otg_global, otg_device, otg_pwrclk, otg_global_dieptxfx};
+use core::marker::PhantomData;
+use critical_section::{CriticalSection, Mutex};
+use embedded_hal::blocking::delay::DelayMs;
+use usb_device::bus::{PollResult, UsbBusAllocator};
+use usb_device::endpoint::{EndpointAddress, EndpointType};
+use usb_device::{Result, UsbDirection, UsbError};
 
-use crate::target::UsbRegisters;
 use crate::endpoint::{EndpointIn, EndpointOut};
-use crate::endpoint_memory::{EndpointMemoryAllocator, EndpointBufferState};
-use crate::{UsbPeripheral, PhyType};
+use crate::endpoint_memory::{EndpointBufferState, EndpointMemoryAllocator};
+use crate::target::UsbRegisters;
+use crate::{PhyType, UsbPeripheral};
 
 /// USB peripheral driver for STM32 microcontrollers.
 pub struct UsbBus<USB> {
@@ -56,12 +58,18 @@ impl<USB: UsbPeripheral> UsbBus<USB> {
         let fifo_size = self.allocator.memory_allocator.tx_fifo_size_words(0);
 
         #[cfg(feature = "fs")]
-        write_reg!(otg_global, regs.global(), DIEPTXF0,
+        write_reg!(
+            otg_global,
+            regs.global(),
+            DIEPTXF0,
             TX0FD: fifo_size as u32,
             TX0FSA: fifo_top as u32
         );
         #[cfg(feature = "hs")]
-        write_reg!(otg_global, regs.global(), GNPTXFSIZ,
+        write_reg!(
+            otg_global,
+            regs.global(),
+            GNPTXFSIZ,
             TX0FD: fifo_size as u32,
             TX0FSA: fifo_top as u32
         );
@@ -73,7 +81,10 @@ impl<USB: UsbPeripheral> UsbBus<USB> {
             let fifo_size = self.allocator.memory_allocator.tx_fifo_size_words(i);
 
             let dieptxfx = regs.dieptxfx(i);
-            write_reg!(otg_global_dieptxfx, dieptxfx, DIEPTXFx,
+            write_reg!(
+                otg_global_dieptxfx,
+                dieptxfx,
+                DIEPTXFx,
                 INEPTXFD: fifo_size as u32,
                 INEPTXSA: fifo_top as u32
             );
@@ -90,7 +101,8 @@ impl<USB: UsbPeripheral> UsbBus<USB> {
         for ep in &self.allocator.endpoints_in {
             if let Some(ep) = ep {
                 // enabling EP TX interrupt
-                modify_reg!(otg_device, regs.device(), DAINTMSK, |v| v | (0x0001 << ep.address().index()));
+                modify_reg!(otg_device, regs.device(), DAINTMSK, |v| v
+                    | (0x0001 << ep.address().index()));
 
                 ep.configure(cs);
             }
@@ -249,7 +261,7 @@ impl<USB: UsbPeripheral> EndpointAllocator<USB> {
             endpoints_in: [None, None, None, None, None, None, None, None, None],
             endpoints_out: [None, None, None, None, None, None, None, None, None],
             memory_allocator: EndpointMemoryAllocator::new(memory),
-            _marker: PhantomData
+            _marker: PhantomData,
         }
     }
 
@@ -269,28 +281,33 @@ impl<USB: UsbPeripheral> EndpointAllocator<USB> {
             for number in 1..USB::ENDPOINT_COUNT {
                 if *bitmap & (1 << number) == 0 {
                     *bitmap |= 1 << number;
-                    return Ok(number as u8)
+                    return Ok(number as u8);
                 }
             }
             Err(UsbError::EndpointOverflow)
         }
     }
 
-    fn alloc(bitmap: &mut u8, config: &EndpointConfig, direction: UsbDirection) -> Result<EndpointDescriptor> {
+    fn alloc(
+        bitmap: &mut u8,
+        config: &EndpointConfig,
+        direction: UsbDirection,
+    ) -> Result<EndpointDescriptor> {
         let number = Self::alloc_number(bitmap, config.number)?;
         let address = EndpointAddress::from_parts(number as usize, direction);
         Ok(EndpointDescriptor {
             address,
             ep_type: config.ep_type,
             max_packet_size: config.max_packet_size,
-            interval: config.interval
+            interval: config.interval,
         })
     }
 
     fn alloc_in(&mut self, config: &EndpointConfig) -> Result<EndpointIn> {
         let descr = Self::alloc(&mut self.bitmap_in, config, UsbDirection::In)?;
 
-        self.memory_allocator.allocate_tx_buffer(descr.address.index() as u8, descr.max_packet_size as usize)?;
+        self.memory_allocator
+            .allocate_tx_buffer(descr.address.index() as u8, descr.max_packet_size as usize)?;
         let ep = EndpointIn::new::<USB>(descr);
 
         Ok(ep)
@@ -299,7 +316,9 @@ impl<USB: UsbPeripheral> EndpointAllocator<USB> {
     fn alloc_out(&mut self, config: &EndpointConfig) -> Result<EndpointOut> {
         let descr = Self::alloc(&mut self.bitmap_out, config, UsbDirection::Out)?;
 
-        let buffer = self.memory_allocator.allocate_rx_buffer(descr.max_packet_size as usize)?;
+        let buffer = self
+            .memory_allocator
+            .allocate_rx_buffer(descr.max_packet_size as usize)?;
         let ep = EndpointOut::new::<USB>(descr, buffer);
 
         Ok(ep)
@@ -311,8 +330,8 @@ impl<USB: UsbPeripheral> EndpointAllocator<USB> {
         ep_addr: Option<EndpointAddress>,
         ep_type: EndpointType,
         max_packet_size: u16,
-        interval: u8) -> Result<EndpointAddress>
-    {
+        interval: u8,
+    ) -> Result<EndpointAddress> {
         let ep_type = unsafe { core::mem::transmute(ep_type) };
         let number = ep_addr.map(|a| a.index() as u8);
 
@@ -321,7 +340,7 @@ impl<USB: UsbPeripheral> EndpointAllocator<USB> {
             max_packet_size,
             interval,
             number,
-            pair_of: None
+            pair_of: None,
         };
         match ep_dir {
             UsbDirection::Out => {
@@ -329,13 +348,13 @@ impl<USB: UsbPeripheral> EndpointAllocator<USB> {
                 let address = ep.address();
                 self.endpoints_out[address.index()] = Some(ep);
                 Ok(address)
-            },
+            }
             UsbDirection::In => {
                 let ep = self.alloc_in(&config)?;
                 let address = ep.address();
                 self.endpoints_in[address.index()] = Some(ep);
                 Ok(address)
-            },
+            }
         }
     }
 }
@@ -347,9 +366,10 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
         ep_addr: Option<EndpointAddress>,
         ep_type: EndpointType,
         max_packet_size: u16,
-        interval: u8) -> Result<EndpointAddress>
-    {
-        self.allocator.alloc_ep(ep_dir, ep_addr, ep_type, max_packet_size, interval)
+        interval: u8,
+    ) -> Result<EndpointAddress> {
+        self.allocator
+            .alloc_ep(ep_dir, ep_addr, ep_type, max_packet_size, interval)
     }
 
     fn enable(&mut self) {
@@ -383,7 +403,7 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
                 PhyType::InternalFullSpeed => {
                     // Select FS Embedded PHY
                     modify_reg!(otg_global, regs.global(), GUSBCFG, PHYSEL: 1);
-                },
+                }
                 PhyType::InternalHighSpeed => {
                     // Turn off PHY
                     modify_reg!(otg_global, regs.global(), GCCFG, PWRDWN: 0);
@@ -578,8 +598,16 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
 
             let core_id = read_reg!(otg_global, regs.global(), CID);
 
-            let (wakeup, suspend, enum_done, reset, iep, rxflvl) = read_reg!(otg_global, regs.global(), GINTSTS,
-                WKUPINT, USBSUSP, ENUMDNE, USBRST, IEPINT, RXFLVL
+            let (wakeup, suspend, enum_done, reset, iep, rxflvl) = read_reg!(
+                otg_global,
+                regs.global(),
+                GINTSTS,
+                WKUPINT,
+                USBSUSP,
+                ENUMDNE,
+                USBRST,
+                IEPINT,
+                RXFLVL
             );
 
             if reset != 0 {
@@ -598,7 +626,7 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
                 let speed = read_reg!(otg_device, regs.device(), DSTS, ENUMSPD);
 
                 // Compute and update TRDT
-                let trdt;
+                let mut trdt = 0;
                 match speed {
                     0b00 => {
                         // High speed
@@ -614,7 +642,8 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
                         // Full speed
 
                         // From RM0431 (F72xx), RM0090 (F429)
-                        trdt = match self.peripheral.ahb_frequency_hz() {
+                        #[cfg(not(feature = "esp32sx"))]
+                        let _trdt = match self.peripheral.ahb_frequency_hz() {
                             0..=14_199_999 => panic!("AHB frequency is too low"),
                             14_200_000..=14_999_999 => 0xF,
                             15_000_000..=15_999_999 => 0xE,
@@ -627,8 +656,13 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
                             27_500_000..=31_999_999 => 0x7, // 27.7..32 in code from CubeIDE
                             32_000_000..=u32::MAX => 0x6,
                         };
+
+                        #[cfg(feature = "esp32sx")]
+                        let _trdt = 5;
+
+                        trdt = trdt;
                     }
-                    _ => unimplemented!()
+                    _ => unimplemented!(),
                 }
                 modify_reg!(otg_global, regs.global(), GUSBCFG, TRDT: trdt);
 
@@ -651,12 +685,15 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
 
                 // RXFLVL & IEPINT flags are read-only, there is no need to clear them
                 if rxflvl != 0 {
-                    let (epnum, data_size, status) = read_reg!(otg_global, regs.global(), GRXSTSR, EPNUM, BCNT, PKTSTS);
+                    let (epnum, data_size, status) =
+                        read_reg!(otg_global, regs.global(), GRXSTSR, EPNUM, BCNT, PKTSTS);
                     match status {
-                        0x02 => { // OUT received
+                        0x02 => {
+                            // OUT received
                             ep_out |= 1 << epnum;
                         }
-                        0x06 => { // SETUP received
+                        0x06 => {
+                            // SETUP received
                             // flushing TX if something stuck in control endpoint
                             let ep = regs.endpoint_in(epnum as usize);
                             if read_reg!(endpoint_in, ep, DIEPTSIZ, PKTCNT) != 0 {
@@ -665,9 +702,13 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
                             }
                             ep_setup |= 1 << epnum;
                         }
-                        0x03 | 0x04 => { // OUT completed | SETUP completed
+                        0x03 | 0x04 => {
+                            // OUT completed | SETUP completed
                             // Re-enable the endpoint, F429-like chips only
-                            if core_id == 0x0000_1200 || core_id == 0x0000_1100 {
+                            if core_id == 0x4f54_400a
+                                || core_id == 0x0000_1200
+                                || core_id == 0x0000_1100
+                            {
                                 let ep = regs.endpoint_out(epnum as usize);
                                 modify_reg!(endpoint_out, ep, DOEPCTL, CNAK: 1, EPENA: 1);
                             }
@@ -685,12 +726,18 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
                                 read_reg!(otg_global, regs.global(), GRXSTSP); // pop GRXSTSP
 
                                 let is_setup = status == 0x06;
-                                buffer.fill_from_fifo(*regs, data_size as u16, is_setup).ok();
+                                buffer
+                                    .fill_from_fifo(*regs, data_size as u16, is_setup)
+                                    .ok();
 
                                 // Re-enable the endpoint, F446-like chips only
-                                if core_id == 0x0000_2000 || core_id == 0x0000_2100 ||
-                                   core_id == 0x0000_2300 ||
-                                   core_id == 0x0000_3000 || core_id == 0x0000_3100 {
+                                if core_id == 0x4f54_400a
+                                    || core_id == 0x0000_2000
+                                    || core_id == 0x0000_2100
+                                    || core_id == 0x0000_2300
+                                    || core_id == 0x0000_3000
+                                    || core_id == 0x0000_3100
+                                {
                                     let ep = regs.endpoint_out(epnum as usize);
                                     modify_reg!(endpoint_out, ep, DOEPCTL, CNAK: 1, EPENA: 1);
                                 }
@@ -716,17 +763,21 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
                         match ep.buffer_state() {
                             EndpointBufferState::DataOut => {
                                 ep_out |= 1 << ep.address().index();
-                            },
+                            }
                             EndpointBufferState::DataSetup => {
                                 ep_setup |= 1 << ep.address().index();
-                            },
-                            EndpointBufferState::Empty => {},
+                            }
+                            EndpointBufferState::Empty => {}
                         }
                     }
                 }
 
                 if (ep_in_complete | ep_out | ep_setup) != 0 {
-                    PollResult::Data { ep_out, ep_in_complete, ep_setup }
+                    PollResult::Data {
+                        ep_out,
+                        ep_in_complete,
+                        ep_setup,
+                    }
                 } else {
                     PollResult::None
                 }

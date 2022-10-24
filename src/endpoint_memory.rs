@@ -1,10 +1,10 @@
 #![allow(dead_code)]
-use core::slice;
-use core::marker::PhantomData;
-use vcell::VolatileCell;
-use crate::UsbPeripheral;
 use crate::target::{fifo_read_into, UsbRegisters};
+use crate::UsbPeripheral;
+use core::marker::PhantomData;
+use core::slice;
 use usb_device::{Result, UsbError};
+use vcell::VolatileCell;
 
 #[derive(Eq, PartialEq)]
 pub enum EndpointBufferState {
@@ -26,13 +26,13 @@ impl EndpointBuffer {
             buffer: unsafe { &mut *(buffer as *mut [u32] as *mut [VolatileCell<u32>]) },
             data_size: 0,
             has_data: false,
-            is_setup: false
+            is_setup: false,
         }
     }
 
     pub fn read_packet(&mut self, mut buf: &mut [u8]) -> Result<usize> {
         if !self.has_data {
-            return Err(UsbError::WouldBlock)
+            return Err(UsbError::WouldBlock);
         }
 
         let data_size = self.data_size as usize;
@@ -64,7 +64,12 @@ impl EndpointBuffer {
         Ok(data_size)
     }
 
-    pub fn fill_from_fifo(&mut self, usb: UsbRegisters, data_size: u16, is_setup: bool) -> Result<()> {
+    pub fn fill_from_fifo(
+        &mut self,
+        usb: UsbRegisters,
+        data_size: u16,
+        is_setup: bool,
+    ) -> Result<()> {
         if self.has_data {
             return Err(UsbError::WouldBlock);
         }
@@ -106,7 +111,6 @@ impl Default for EndpointBuffer {
     }
 }
 
-
 pub struct EndpointMemoryAllocator<USB> {
     next_free_offset: usize,
     max_size_words: usize,
@@ -122,7 +126,7 @@ impl<USB: UsbPeripheral> EndpointMemoryAllocator<USB> {
             max_size_words: 0,
             memory,
             tx_fifo_size_words: [0; 9],
-            _marker: PhantomData
+            _marker: PhantomData,
         }
     }
 
@@ -149,7 +153,7 @@ impl<USB: UsbPeripheral> EndpointMemoryAllocator<USB> {
         assert!(ep_number < self.tx_fifo_size_words.len());
 
         if self.tx_fifo_size_words[ep_number] != 0 {
-            return Err(UsbError::InvalidEndpoint)
+            return Err(UsbError::InvalidEndpoint);
         }
 
         let used = 30

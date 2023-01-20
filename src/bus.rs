@@ -491,7 +491,8 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
             write_reg!(otg_global, regs.global(), GINTMSK,
                 USBRST: 1, ENUMDNEM: 1,
                 USBSUSPM: 1, WUIM: 1,
-                IEPINT: 1, RXFLVLM: 1
+                IEPINT: 1, RXFLVLM: 1,
+                IISOIXFRM: 1
             );
 
             // clear pending interrupts
@@ -578,8 +579,8 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
 
             let core_id = read_reg!(otg_global, regs.global(), CID);
 
-            let (wakeup, suspend, enum_done, reset, iep, rxflvl) = read_reg!(otg_global, regs.global(), GINTSTS,
-                WKUPINT, USBSUSP, ENUMDNE, USBRST, IEPINT, RXFLVL
+            let (wakeup, suspend, enum_done, reset, iep, rxflvl, iisoixfr) = read_reg!(otg_global, regs.global(), GINTSTS,
+                WKUPINT, USBSUSP, ENUMDNE, USBRST, IEPINT, RXFLVL, IISOIXFR
             );
 
             if reset != 0 {
@@ -642,6 +643,53 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
                 write_reg!(otg_global, regs.global(), GINTSTS, USBSUSP: 1);
 
                 PollResult::Suspend
+            } else if iisoixfr != 0 {
+                use crate::ral::endpoint_in;
+
+                // Incomplete isochronous IN transfer; see
+                // RM0383 Rev 3 pp797 "Incomplete isochronous IN data transfers"
+                write_reg!(otg_global, regs.global(), GINTSTS, IISOIXFR: 1);
+
+                let in_endpoints = self.allocator.endpoints_in
+                                                  .iter()
+                                                  .flatten()
+                                                  .map(|ep| ep.address().index());
+
+                let mut iep: u16 = 0;
+
+                for epnum in in_endpoints {
+                    let ep_regs = regs.endpoint_in(epnum);
+
+                    // filter out non-isochronous endpoints
+                    if read_reg!(endpoint_in, ep_regs, DIEPCTL, EPTYP) & 0x11 != 0x01 { continue; }
+
+                    // identify incomplete transfers by the presence of the NAK event
+                    // see RM0383 Rev 3 pp 746 description of NAK:
+                    //
+                    // > In case of isochronous IN endpoints the interrupt gets
+                    // > generated when a zero length packet is transmitted due
+                    // > to unavailability of data in the Tx FIFO.
+                    if read_reg!(endpoint_in, ep_regs, DIEPINT) & 1<<13 == 0 { continue; }
+
+                    // Set NAK
+                    modify_reg!(endpoint_in, ep_regs, DIEPCTL, SNAK: 1);
+                    while read_reg!(endpoint_in, ep_regs, DIEPINT, INEPNE) == 0 {}
+
+                    // Disable the endpoint
+                    modify_reg!(endpoint_in, ep_regs, DIEPCTL, SNAK: 1, EPDIS: 1);
+                    while read_reg!(endpoint_in, ep_regs, DIEPINT, EPDISD) == 0 {}
+                    modify_reg!(endpoint_in, ep_regs, DIEPINT, EPDISD: 1);
+                    assert!(read_reg!(endpoint_in, ep_regs, DIEPCTL, EPENA) == 0);
+                    assert!(read_reg!(endpoint_in, ep_regs, DIEPCTL, EPDIS) == 0);
+
+                    // Flush the TX FIFO
+                    modify_reg!(otg_global, regs.global(), GRSTCTL, TXFNUM: epnum as u32, TXFFLSH: 1);
+                    while read_reg!(otg_global, regs.global(), GRSTCTL, TXFFLSH) == 1 {}
+
+                    iep |= 1 << epnum;
+                }
+
+                PollResult::Data { ep_out: 0, ep_in_complete: iep, ep_setup: 0 }
             } else {
                 let mut ep_out = 0;
                 let mut ep_in_complete = 0;

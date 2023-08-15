@@ -678,6 +678,19 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
                         }
                     }
 
+                    if status == 0x02 {
+                        if let Some(ep) = &self.allocator.endpoints_out[epnum as usize] {
+                            // toggle (micro)frame number odd/even bit for ISO transactions if interval is 1
+                            if ep.descriptor().ep_type == EndpointType::Isochronous && ep.descriptor().interval == 1 {
+                                let ep = regs.endpoint_out(epnum as usize);
+                                let odd = read_reg!(endpoint_out, ep, DOEPCTL, EONUM_DPID);
+                                modify_reg!(endpoint_out, ep, DOEPCTL,
+                                    SD0PID_SEVNFRM: odd as u32,
+                                    SODDFRM: !odd as u32);
+                            }
+                        }
+                    }
+
                     if status == 0x02 || status == 0x06 {
                         if let Some(ep) = &self.allocator.endpoints_out[epnum as usize] {
                             let mut buffer = ep.buffer.borrow(cs).borrow_mut();

@@ -1,5 +1,5 @@
 use usb_device::{Result, UsbError, UsbDirection};
-use usb_device::endpoint::EndpointAddress;
+use usb_device::endpoint::{EndpointAddress, EndpointType};
 use crate::endpoint_memory::{EndpointBuffer, EndpointBufferState};
 use crate::ral::{read_reg, write_reg, modify_reg, endpoint_in, endpoint_out, endpoint0_out};
 use crate::target::{fifo_write, UsbRegisters};
@@ -59,6 +59,10 @@ impl Endpoint {
     #[inline(always)]
     fn index(&self) -> u8 {
         self.descriptor.address.index() as u8
+    }
+
+    pub fn descriptor(&self) -> &EndpointDescriptor {
+        &self.descriptor
     }
 }
 
@@ -142,7 +146,22 @@ impl EndpointIn {
         #[cfg(feature = "hs")]
         write_reg!(endpoint_in, ep, DIEPTSIZ, MCNT: 1, PKTCNT: 1, XFRSIZ: buf.len() as u32);
 
-        modify_reg!(endpoint_in, ep, DIEPCTL, CNAK: 1, EPENA: 1);
+        // toggle (micro)frame number odd/even bit for ISO transactions if interval is 1
+        if self.descriptor.ep_type == EndpointType::Isochronous && self.descriptor.interval == 1 {
+            let odd = read_reg!(endpoint_in, ep, DIEPCTL, EONUM_DPID);
+            #[cfg(feature = "fs")]
+            modify_reg!(
+                endpoint_in, ep, DIEPCTL,
+                CNAK: 1, EPENA: 1, SD0PID_SEVNFRM: odd as u32, SODDFRM_SD1PID: !odd as u32
+            );
+            #[cfg(feature = "hs")]
+            modify_reg!(
+                endpoint_in, ep, DIEPCTL,
+                CNAK: 1, EPENA: 1, SD0PID_SEVNFRM: odd as u32, SODDFRM: !odd as u32
+            );
+        } else {
+            modify_reg!(endpoint_in, ep, DIEPCTL, CNAK: 1, EPENA: 1);
+        }
 
         fifo_write(self.usb, self.index(), buf);
 

@@ -7,7 +7,7 @@ name: CI
 
 jobs:
   ci-linux:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     continue-on-error: ${{ matrix.experimental || false }}
     strategy:
       matrix:
@@ -18,12 +18,10 @@ jobs:
             experimental: true
 
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
         with:
-          profile: minimal
           toolchain: ${{ matrix.rust }}
-          override: true
 
       - name: Check code (cortex-m fs)
         run: cargo check --features "cortex-m fs"

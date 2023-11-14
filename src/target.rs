@@ -7,9 +7,12 @@ pub use cortex_m::interrupt;
 #[cfg(feature = "riscv")]
 pub use riscv::interrupt;
 
-use crate::ral::{otg_global, otg_device, otg_pwrclk, otg_global_dieptxfx, endpoint_in, endpoint0_out, endpoint_out};
-use crate::UsbPeripheral;
 use crate::ral::register::RWRegister;
+use crate::ral::{
+    endpoint0_out, endpoint_in, endpoint_out, otg_device, otg_global, otg_global_dieptxfx,
+    otg_pwrclk,
+};
+use crate::UsbPeripheral;
 
 pub fn fifo_write(usb: UsbRegisters, channel: impl Into<usize>, mut buf: &[u8]) {
     let fifo = usb.fifo(channel.into());

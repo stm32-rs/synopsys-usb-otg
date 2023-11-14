@@ -5,7 +5,7 @@
 #[cfg(all(feature = "fs", feature = "hs"))]
 compile_error!("choose only one USB mode");
 
-#[cfg(not(any(feature = "fs", feature ="hs")))]
+#[cfg(not(any(feature = "fs", feature = "hs")))]
 compile_error!("select USB mode feature (fs/hs)");
 
 mod endpoint;
@@ -44,7 +44,9 @@ pub unsafe trait UsbPeripheral: Send + Sync {
     fn ahb_frequency_hz(&self) -> u32;
 
     /// Returns PHY type that should be used for USB peripheral
-    fn phy_type(&self) -> PhyType { PhyType::InternalFullSpeed }
+    fn phy_type(&self) -> PhyType {
+        PhyType::InternalFullSpeed
+    }
 
     /// Performs initial setup of the internal high-speed PHY
     ///

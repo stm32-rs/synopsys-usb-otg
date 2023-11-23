@@ -23,14 +23,11 @@ jobs:
         with:
           toolchain: ${{ matrix.rust }}
 
-      - name: Check code (cortex-m fs)
-        run: cargo check --features "cortex-m fs"
+      - name: Check code (fs)
+        run: cargo check --features fs
 
-      - name: Check code (cortex-m hs)
-        run: cargo check --features "cortex-m hs"
+      - name: Check code (hs)
+        run: cargo check --features hs
 
-      - name: Check code (cortex-m hs xcvrdly)
-        run: cargo check --features "cortex-m hs xcvrdly"
-
-      - name: Check code (riscv fs)
-        run: cargo check --features "riscv fs"
+      - name: Check code (hs xcvrdly)
+        run: cargo check --features "hs xcvrdly"

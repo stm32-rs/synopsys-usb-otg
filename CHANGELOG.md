@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Changed
 
 * Use `critical-section` crate for critical sections.
+* Replaced bundled RAL macros with `ral-registers`
 
 
 ## [v0.4.0] - 2023-11-18

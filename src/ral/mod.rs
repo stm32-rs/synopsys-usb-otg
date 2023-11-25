@@ -2,10 +2,10 @@
 
 pub mod instances;
 pub mod peripherals;
-pub mod register;
 pub mod stm32f429;
 
-pub use crate::{modify_reg, read_reg, write_reg};
+pub use ral_registers as register;
+pub use ral_registers::{modify_reg, read_reg, write_reg};
 
 pub mod otg_global {
     #[cfg(feature = "fs")]

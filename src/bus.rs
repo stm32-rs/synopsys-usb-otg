@@ -111,7 +111,7 @@ impl<USB: UsbPeripheral> UsbBus<USB> {
         }
     }
 
-    fn deconfigure_all(&self, cs: CriticalSection<'_>) {
+    fn deconfigure_all(&self, cs: CriticalSection<'_>, core_id: u32) {
         let regs = self.regs.borrow(cs);
 
         // disable interrupts
@@ -125,7 +125,7 @@ impl<USB: UsbPeripheral> UsbBus<USB> {
 
         for ep in &self.allocator.endpoints_out {
             if let Some(ep) = ep {
-                ep.deconfigure(cs);
+                ep.deconfigure(cs, core_id);
             }
         }
     }
@@ -454,13 +454,14 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
 
             // Configuring Vbus sense and SOF output
             match core_id {
-                0x0000_1200 | 0x0000_1100 => {
+                0x0000_1000 | 0x0000_1200 | 0x0000_1100 => {
                     // F429-like chips have the GCCFG.NOVBUSSENS bit
 
                     //modify_reg!(otg_global, regs.global, GCCFG, NOVBUSSENS: 1);
                     modify_reg!(otg_global, regs.global(), GCCFG, |r| r | (1 << 21));
 
-                    modify_reg!(otg_global, regs.global(), GCCFG, VBUSASEN: 0, VBUSBSEN: 0, SOFOUTEN: 0);
+                    // VBUSBSEN=1 is required for GD32VF103
+                    modify_reg!(otg_global, regs.global(), GCCFG, VBUSASEN: 0, VBUSBSEN: 1, SOFOUTEN: 0);
                 }
                 0x0000_2000 | 0x0000_2100 | 0x0000_2300 | 0x0000_3000 | 0x0000_3100 => {
                     // F446-like chips have the GCCFG.VBDEN bit with the opposite meaning
@@ -604,7 +605,7 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
             if reset != 0 {
                 write_reg!(otg_global, regs.global(), GINTSTS, USBRST: 1);
 
-                self.deconfigure_all(cs);
+                self.deconfigure_all(cs, core_id);
 
                 // Flush RX
                 modify_reg!(otg_global, regs.global(), GRSTCTL, RXFFLSH: 1);
@@ -632,20 +633,25 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
                     0b01 | 0b11 => {
                         // Full speed
 
-                        // From RM0431 (F72xx), RM0090 (F429)
-                        trdt = match self.peripheral.ahb_frequency_hz() {
-                            0..=14_199_999 => panic!("AHB frequency is too low"),
-                            14_200_000..=14_999_999 => 0xF,
-                            15_000_000..=15_999_999 => 0xE,
-                            16_000_000..=17_199_999 => 0xD,
-                            17_200_000..=18_499_999 => 0xC,
-                            18_500_000..=19_999_999 => 0xB,
-                            20_000_000..=21_799_999 => 0xA,
-                            21_800_000..=23_999_999 => 0x9,
-                            24_000_000..=27_499_999 => 0x8,
-                            27_500_000..=31_999_999 => 0x7, // 27.7..32 in code from CubeIDE
-                            32_000_000..=u32::MAX => 0x6,
-                        };
+                        if core_id == 0x0000_1000 {
+                            // From GD32VF103_Firmware_Library_V1.0.2.rar.
+                            trdt = 0x05;
+                        } else {
+                            // From RM0431 (F72xx), RM0090 (F429)
+                            trdt = match self.peripheral.ahb_frequency_hz() {
+                                0..=14_199_999 => panic!("AHB frequency is too low"),
+                                14_200_000..=14_999_999 => 0xF,
+                                15_000_000..=15_999_999 => 0xE,
+                                16_000_000..=17_199_999 => 0xD,
+                                17_200_000..=18_499_999 => 0xC,
+                                18_500_000..=19_999_999 => 0xB,
+                                20_000_000..=21_799_999 => 0xA,
+                                21_800_000..=23_999_999 => 0x9,
+                                24_000_000..=27_499_999 => 0x8,
+                                27_500_000..=31_999_999 => 0x7, // 27.7..32 in code from CubeIDE
+                                32_000_000..=u32::MAX => 0x6,
+                            };
+                        }
                     }
                     _ => unimplemented!(),
                 }
@@ -685,16 +691,35 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
                                 modify_reg!(otg_global, regs.global(), GRSTCTL, TXFNUM: epnum, TXFFLSH: 1);
                                 while read_reg!(otg_global, regs.global(), GRSTCTL, TXFFLSH) == 1 {}
                             }
-                            ep_setup |= 1 << epnum;
                         }
                         0x03 | 0x04 => {
                             // OUT completed | SETUP completed
+
+                            // It's important to read this register before re-enabling the relevant
+                            // endpoint on GD32VF103, otherwise DOEPCTL.EPENA resets back to 0 after
+                            // reading GRXSTSP.
+                            read_reg!(otg_global, regs.global(), GRXSTSP); // pop GRXSTSP
+
+                            if status == 0x04 && core_id == 0x0000_1000 {
+                                // For GD32VF103 report SETUP event only after the "SETUP completed"
+                                // event. For newer chips SETUP event is reported after successful
+                                // read from the endpoint FIFO to the buffer.
+                                ep_setup |= 1 << epnum;
+
+                                // We indicate presence of SETUP packet here, because otherwise
+                                // usb-device starts IN transfer after the "SETUP received" event.
+                                // This transfer gets interrupted by the "SETUP completed" event:
+                                // USB peripheral automatically disables EP0 IN endpoint.
+                            }
+
                             // Re-enable the endpoint, F429-like chips only
-                            if core_id == 0x0000_1200 || core_id == 0x0000_1100 {
+                            if core_id == 0x0000_1000
+                                || core_id == 0x0000_1200
+                                || core_id == 0x0000_1100
+                            {
                                 let ep = regs.endpoint_out(epnum as usize);
                                 modify_reg!(endpoint_out, ep, DOEPCTL, CNAK: 1, EPENA: 1);
                             }
-                            read_reg!(otg_global, regs.global(), GRXSTSP); // pop GRXSTSP
                         }
                         _ => {
                             read_reg!(otg_global, regs.global(), GRXSTSP); // pop GRXSTSP
@@ -746,7 +771,9 @@ impl<USB: UsbPeripheral> usb_device::bus::UsbBus for UsbBus<USB> {
                                 ep_out |= 1 << ep.address().index();
                             }
                             EndpointBufferState::DataSetup => {
-                                ep_setup |= 1 << ep.address().index();
+                                if core_id > 0x0000_1000 {
+                                    ep_setup |= 1 << ep.address().index();
+                                }
                             }
                             EndpointBufferState::Empty => {}
                         }

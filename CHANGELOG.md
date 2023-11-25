@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 
+### Added
+
+* Support for GD32VF103 chips (#25)
+
 ### Changed
 
 * Use `critical-section` crate for critical sections.

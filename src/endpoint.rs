@@ -1,5 +1,5 @@
 use crate::endpoint_memory::{EndpointBuffer, EndpointBufferState};
-use crate::ral::{endpoint0_out, endpoint_in, endpoint_out, modify_reg, read_reg, write_reg};
+use crate::ral::{endpoint0_out, endpoint_in, endpoint_out, otg_device, modify_reg, read_reg, write_reg};
 use crate::target::{fifo_write, UsbRegisters};
 use crate::transition::EndpointDescriptor;
 use crate::UsbPeripheral;
@@ -139,7 +139,21 @@ impl EndpointIn {
         #[cfg(feature = "hs")]
         write_reg!(endpoint_in, ep, DIEPTSIZ, MCNT: 1, PKTCNT: 1, XFRSIZ: buf.len() as u32);
 
-        modify_reg!(endpoint_in, ep, DIEPCTL, CNAK: 1, EPENA: 1);
+        // For isochronous endpoints, we need to set EVEN/ODD frames here
+        if matches!(self.descriptor.ep_type,usb_device::endpoint::EndpointType::Isochronous{ .. }) {
+            let mut fnsof = 0;
+            critical_section::with(|cs| {
+                let regs = self.usb.device();
+                fnsof = read_reg!(otg_device, regs, DSTS, FNSOF);
+            });
+            if fnsof & 1 == 1 {
+                modify_reg!(endpoint_in, ep, DIEPCTL, CNAK: 1, EPENA: 1, SD0PID_SEVNFRM: 1);
+            } else {
+                modify_reg!(endpoint_in, ep, DIEPCTL, CNAK: 1, EPENA: 1, SODDFRM_SD1PID: 1);
+            }
+        } else {
+            modify_reg!(endpoint_in, ep, DIEPCTL, CNAK: 1, EPENA: 1);
+        }
 
         fifo_write(self.usb, self.index(), buf);
 
